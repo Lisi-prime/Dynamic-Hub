@@ -20,8 +20,10 @@ if PlaceId == 142823291 or PlaceId == 335132778 or GameId == 66654135 then
         return s
     end
 
-    local coreRaw = get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/main/Dynamic_hub")
-        or get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/refs/heads/main/Dynamic_hub")
+    local cb = "?t=" .. tostring(os.time())
+
+    local coreRaw = get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/main/Dynamic_hub" .. cb)
+        or get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/refs/heads/main/Dynamic_hub" .. cb)
     
     local Hub = nil
     if coreRaw then
@@ -43,8 +45,8 @@ if PlaceId == 142823291 or PlaceId == 335132778 or GameId == 66654135 then
 
     task.wait(0.1)
 
-    local guiRaw = get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/main/Dynamic_gui")
-        or get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/refs/heads/main/Dynamic_gui")
+    local guiRaw = get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/main/Dynamic_gui" .. cb)
+        or get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/refs/heads/main/Dynamic_gui" .. cb)
     
     if guiRaw then
         local fn = loadstring(guiRaw)
