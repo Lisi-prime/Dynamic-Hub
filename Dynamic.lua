@@ -1,38 +1,55 @@
 --[[
-    Dynamic Hub - Universal Loader
-    by Lisi
+    Dynamic Hub
+      by Lisi
 ]]
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+print("Welcome to Dynamic Hub")
 
 local PlaceId = game.PlaceId
 local GameId = game.GameId
 
 if PlaceId == 142823291 or PlaceId == 335132778 or GameId == 66654135 then
-    local function get(url)
-        local s = nil
-        for i = 1, 3 do
+    local function fetch(url)
+        for _ = 1, 3 do
             local ok, res = pcall(game.HttpGet, game, url)
             if ok and type(res) == "string" and #res > 500 then
-                s = res
-                break
+                return res
             end
             task.wait(0.15)
         end
-        return s
+        return nil
     end
 
     local cb = "?t=" .. tostring(os.time())
+    local coreRaw, guiRaw = nil, nil
 
-    local coreRaw = get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/main/Dynamic_hub" .. cb)
-        or get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/refs/heads/main/Dynamic_hub" .. cb)
-    
+    task.spawn(function()
+        coreRaw = fetch("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/main/Dynamic_hub" .. cb)
+            or fetch("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/refs/heads/main/Dynamic_hub" .. cb)
+    end)
+    task.spawn(function()
+        guiRaw = fetch("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/main/Dynamic_gui" .. cb)
+            or fetch("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/refs/heads/main/Dynamic_gui" .. cb)
+    end)
+
+    local waited = 0
+    while (not coreRaw or not guiRaw) and waited < 6 do
+        task.wait(0.05)
+        waited = waited + 0.05
+    end
+
+    if not coreRaw or not guiRaw then return end
+
     local Hub = nil
-    if coreRaw then
-        local fn = loadstring(coreRaw)
-        if fn then
-            local ok, res = pcall(fn)
-            if ok and type(res) == "table" then
-                Hub = res
-            end
+    local fnCore = loadstring(coreRaw)
+    if fnCore then
+        local ok, res = pcall(fnCore)
+        if ok and type(res) == "table" then
+            Hub = res
         end
     end
 
@@ -43,15 +60,8 @@ if PlaceId == 142823291 or PlaceId == 335132778 or GameId == 66654135 then
         pcall(function() shared.DynamicHub = Hub end)
     end
 
-    task.wait(0.1)
-
-    local guiRaw = get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/main/Dynamic_gui" .. cb)
-        or get("https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/refs/heads/main/Dynamic_gui" .. cb)
-    
-    if guiRaw then
-        local fn = loadstring(guiRaw)
-        if fn then
-            pcall(fn, Hub)
-        end
+    local fnGui = loadstring(guiRaw)
+    if fnGui then
+        pcall(fnGui, Hub)
     end
 end
