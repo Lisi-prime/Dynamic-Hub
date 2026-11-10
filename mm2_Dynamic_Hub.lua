@@ -3612,7 +3612,35 @@ function Hub:GetSkinImage(rec)
     if not rec then return nil end
     local meta = rec.meta
     local img = (meta and meta.Image) or rec.Image or (rec.display and rec.display.attrs and rec.display.attrs.Image)
-    if img and type(img) == "string" and img ~= "" then
+    
+    -- Extract digits from candidate image to verify it is NOT a raw UV texture atlas
+    local imgNum = type(img) == "string" and img:match("(%d+)")
+    local isTextureAtlas = false
+    if imgNum then
+        local function checkTex(propVal)
+            if type(propVal) == "string" then
+                local num = propVal:match("(%d+)")
+                if num and num == imgNum then
+                    isTextureAtlas = true
+                end
+            end
+        end
+        local rootProps = rec.display and rec.display.root and rec.display.root.props
+        if rootProps then
+            checkTex(rootProps.TextureID)
+            checkTex(rootProps.TextureId)
+        end
+        if rec.display and type(rec.display.nodes) == "table" then
+            for _, n in ipairs(rec.display.nodes) do
+                if n.props then
+                    checkTex(n.props.TextureId)
+                    checkTex(n.props.TextureID)
+                end
+            end
+        end
+    end
+
+    if img and type(img) == "string" and img ~= "" and not isTextureAtlas then
         return img
     end
     local itemId = (meta and meta.ItemID) or rec.ItemID
@@ -4000,6 +4028,18 @@ function Hub:CreateSkinPart(rec)
             if targetSize then
                 part.Size = targetSize
             end
+            local tid = props.TextureID or props.TextureId
+            if not tid and type(rec.display and rec.display.nodes) == "table" then
+                for _, n in ipairs(rec.display.nodes) do
+                    if n.props and (n.props.TextureID or n.props.TextureId) then
+                        tid = n.props.TextureID or n.props.TextureId
+                        break
+                    end
+                end
+            end
+            if part:IsA("MeshPart") and tid and tid ~= "" then
+                pcall(function() part.TextureID = tostring(tid) end)
+            end
             local sm = part:FindFirstChildOfClass("SpecialMesh")
             if sm then
                 if targetSize and type(props.MeshSize) == "table" then
@@ -4008,8 +4048,9 @@ function Hub:CreateSkinPart(rec)
                     local sz = targetSize.Z / math.max(0.001, props.MeshSize[3])
                     sm.Scale = Vector3.new(sx, sy, sz)
                 end
-                if props.TextureID then sm.TextureId = tostring(props.TextureID) end
-                if props.TextureId then sm.TextureId = tostring(props.TextureId) end
+                if tid and tid ~= "" then
+                    pcall(function() sm.TextureId = tostring(tid) end)
+                end
             end
             part.Anchored = true
             part.Massless = true
@@ -4047,10 +4088,9 @@ function Hub:CreateSkinPart(rec)
         mesh.MeshType = Enum.MeshType.FileMesh
         self:ApplySkinProps(mesh, specialNode.props)
         pcall(function() mesh.MeshId = specialNode.props.MeshId end)
-        if specialNode.props.TextureId then
-            pcall(function() mesh.TextureId = specialNode.props.TextureId end)
-        elseif specialNode.props.TextureID then
-            pcall(function() mesh.TextureId = specialNode.props.TextureID end)
+        local smTid = specialNode.props.TextureId or specialNode.props.TextureID or props.TextureId or props.TextureID
+        if smTid and smTid ~= "" then
+            pcall(function() mesh.TextureId = tostring(smTid) end)
         end
         if specialNode.props.Scale and type(specialNode.props.Scale) == "table" then
             mesh.Scale = Vector3.new(specialNode.props.Scale[1], specialNode.props.Scale[2], specialNode.props.Scale[3])
@@ -4135,6 +4175,20 @@ function Hub:ApplySkinSoundsAndAnims(rec, tool)
     local altGunSound = nil
     local normalGunSound = nil
     local customReload = nil
+
+    -- Sci-Fi Raygun authentic custom laser blast sound
+    local rName = (rec.name or ""):lower()
+    local metaName = (rec.meta and rec.meta.ItemName and rec.meta.ItemName:lower()) or ""
+    if rName:find("raygun") or rName:find("alien") or metaName:find("raygun") or metaName:find("ray gun") then
+        local laserSound = {
+            Name = "Gunshot",
+            SoundId = "rbxassetid://131179973", -- Authentic SBAudio Ray Gun shoot sound
+            Volume = 1,
+            PlaybackSpeed = 1
+        }
+        table.insert(customSounds, laserSound)
+        altGunSound = laserSound
+    end
 
     for _, n in ipairs(allNodes) do
         if n.class == "Sound" and n.props and n.props.SoundId then
@@ -4376,6 +4430,10 @@ function Hub:GetSkinGripCFrame(rec, slot)
     end
 
     if slot == "Gun" then
+        -- Bringer family: Darkbringer, Lightbringer, Chroma Darkbringer, Chroma Lightbringer
+        if name:find("bringer") or meshId:find("4730813852") or meshId:find("4751498862") or meshId:find("4751501078") or meshId:find("4749071819") then
+            return CFrame.new(0, -0.32, 0.46) * CFrame.Angles(math.rad(14), 0, 0)
+        end
         -- Crossbows (Harvester, Icepiercer): horizontal forward grip aligned with hand
         if name:find("harvester") or name:find("icepiercer") or name:find("bow") or name:find("crossbow") or meshId:find("7775027413") or meshId:find("11868991644") then
             return CFrame.new(0, -0.25, 0.45)
@@ -4383,6 +4441,14 @@ function Hub:GetSkinGripCFrame(rec, slot)
         -- Luger family: upright modeled mesh, identity rotation grip
         if name:find("luger") or name == "sugar" or meshId:find("95356090") or meshId:find("101086719") then
             return CFrame.new(0, -0.206, 0.5, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        end
+        -- Sci-Fi / Energy / Raygun / Laser / Blaster / Phaser / UFO / Xeno family
+        if name:find("raygun") or name:find("alien") or name:find("xeno") or name:find("laser") or name:find("blaster") or name:find("phaser") or name:find("ufo") or meshId:find("115447220952926") or meshId:find("96867436912658") or meshId:find("92656610") or meshId:find("69486593") then
+            return CFrame.new(0, -0.3, 0.45, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        end
+        -- Modern MeshPart guns (upright forward grip)
+        if rec.display and rec.display.root and rec.display.root.class == "MeshPart" and not (name:find("strawberr") or name:find("cookie")) then
+            return CFrame.new(0, -0.3, 0.45, 1, 0, 0, 0, 1, 0, 0, 0, 1)
         end
         -- Cartoon / Toy guns
         if name:find("strawberr") or name:find("sunny") or name:find("duckie") or name:find("cherrie") or name:find("floral") or name:find("frozen") or name:find("cookie") or name:find("plaid") or name:find("heartbreak") or name:find("striped") or name:find("paws") or name:find("sunset") or name:find("sticker") then
@@ -4403,6 +4469,71 @@ function Hub:GetSkinGripCFrame(rec, slot)
         end
         return CFrame.new(0, -1, -0.1, 1, 0, 0, 0, 1, 0, 0, 0, 1)
     end
+end
+
+function Hub:ApplyChromaEffect(rec, body)
+    if not (rec and body) then return end
+    local isChroma = false
+    local rName = rec.name or ""
+    local mName = (rec.meta and rec.meta.ItemName) or ""
+    local rarity = (rec.meta and rec.meta.Rarity) or ""
+    if rName:lower():find("chroma") or mName:lower():find("chroma") or rarity:lower() == "chroma" then
+        isChroma = true
+    else
+        for _, n in ipairs(rec.display and rec.display.nodes or {}) do
+            if n.name and n.name:lower():find("chroma") then
+                isChroma = true
+                break
+            end
+        end
+    end
+    if not isChroma then return end
+
+    local cs = self.Services.CollectionService or game:GetService("CollectionService")
+    if cs and cs.AddTag then
+        pcall(function() cs:AddTag(body, "ChromaPart") end)
+        for _, ch in ipairs(body:GetDescendants()) do
+            if ch:IsA("Decal") and (ch.Name:lower():find("chroma") or (ch.Texture and ch.Texture:find("3171206966"))) then
+                pcall(function() cs:AddTag(ch, "ChromaDecal") end)
+            elseif ch:IsA("Fire") then
+                pcall(function() cs:AddTag(ch, "ChromaFire") end)
+            end
+        end
+    end
+
+    local sm = body:FindFirstChildOfClass("SpecialMesh")
+    local decals = {}
+    for _, ch in ipairs(body:GetDescendants()) do
+        if ch:IsA("Decal") and (ch.Name:lower():find("chroma") or (ch.Texture and ch.Texture:find("3171206966"))) then
+            table.insert(decals, ch)
+        end
+    end
+
+    local conn
+    local rs = self.Services.RunService or game:GetService("RunService")
+    conn = rs.RenderStepped:Connect(function()
+        if not (body and body.Parent) then
+            if conn then conn:Disconnect() end
+            return
+        end
+        local hue = (os.clock() * 0.15) % 1
+        local rainbowColor = Color3.fromHSV(hue, 0.9, 1)
+
+        body.Color = rainbowColor
+        if sm and (not sm.TextureId or sm.TextureId == "") then
+            sm.VertexColor = Vector3.new(rainbowColor.R, rainbowColor.G, rainbowColor.B)
+        end
+        for _, d in ipairs(decals) do
+            if d and d.Parent then
+                d.Color3 = rainbowColor
+            end
+        end
+    end)
+    self:RegisterSkinGarbage(body.Parent or body, {
+        Destroy = function()
+            if conn then conn:Disconnect() end
+        end
+    })
 end
 
 function Hub:ApplySkinToTool(rec, specificTool)
@@ -4437,9 +4568,9 @@ function Hub:ApplySkinToTool(rec, specificTool)
         self:UpdateNativeInventoryEquipped(slot, rec.name, skinImg)
     end
 
-    -- Avoid re-creating skin part if already welded to prevent 1-frame drop/flicker
+    local curSkinSig = tostring(rec.sig or rec.name or "")
     local existingBody = tool:FindFirstChild("CustomSkinMesh")
-    if existingBody and existingBody:GetAttribute("SkinSig") == rec.sig then
+    if existingBody and curSkinSig ~= "" and existingBody:GetAttribute("SkinSig") == curSkinSig then
         local targetGrip = self:GetSkinGripCFrame(rec, slot)
         if targetGrip then
             tool.Grip = targetGrip
@@ -4458,6 +4589,12 @@ function Hub:ApplySkinToTool(rec, specificTool)
         return true
     end
 
+    -- Force instant clean removal of any existing custom skin meshes from this tool
+    for _, ch in ipairs(tool:GetChildren()) do
+        if ch.Name == "CustomSkinMesh" or ch.Name == "SkinRigidWeld" or ch.Name == "SkinWeld" then
+            pcall(function() ch:Destroy() end)
+        end
+    end
     self:ClearSkinGarbage(tool)
 
     -- Hide default visual textures on handle
@@ -4487,7 +4624,8 @@ function Hub:ApplySkinToTool(rec, specificTool)
     local body = self:CreateSkinPart(rec)
     if not body then return false end
     body.Name = "CustomSkinMesh"
-    body:SetAttribute("SkinSig", rec.sig)
+    body:SetAttribute("SkinSig", curSkinSig)
+    body.Anchored = false
     body.CanCollide = false
     body.CanTouch = false
     body.CanQuery = false
@@ -4506,14 +4644,10 @@ function Hub:ApplySkinToTool(rec, specificTool)
     body.Parent = tool
     self:RegisterSkinGarbage(tool, body)
     self:RegisterSkinGarbage(tool, weld)
-    task.defer(function()
-        if body and body.Parent then
-            body.Anchored = false
-        end
-    end)
 
     self:ApplySkinFX(rec, tool, body, handle)
     self:ApplySkinSoundsAndAnims(rec, tool)
+    self:ApplyChromaEffect(rec, body)
 
     return true
 end
@@ -4600,15 +4734,31 @@ function Hub:ApplySkinToDisplay(rec)
     end)
 
     self:ApplySkinFX(rec, display, body, body)
+    self:ApplyChromaEffect(rec, body)
     return true
 end
 
-function Hub:EquipSkin(name)
-    local rec = self.SkinSystem.ByName[name]
+function Hub:EquipSkin(name, optSlot)
+    local rec = nil
+    if optSlot then
+        rec = self.SkinSystem.ByName[optSlot .. "_" .. name]
+    end
+    if not rec then
+        rec = self.SkinSystem.ByName[name]
+    end
+    if not rec and optSlot and self.SkinSystem.BySlot[optSlot] then
+        for _, r in ipairs(self.SkinSystem.BySlot[optSlot]) do
+            local rn = r.name or (r.meta and r.meta.ItemName)
+            if rn == name then
+                rec = r
+                break
+            end
+        end
+    end
     if not rec then
         return false
     end
-    local slot = rec.kind or (rec.meta and rec.meta.ItemType) or "Knife"
+    local slot = optSlot or rec.kind or (rec.meta and rec.meta.ItemType) or "Knife"
     self.SkinSystem.Picked[slot] = rec
     if slot == "Knife" then
         self.SkinSystem.CurrentKnife = name
@@ -5184,10 +5334,15 @@ function Hub:SetupSkinWatchers()
                 end
 
                 if isLocal then
-                    -- 1. Gunshot sound is naturally played by Handle.Gunshot:Play() on server,
-                    -- which replicates with our custom SoundId applied. Removing duplicate s:Play() eliminates echo!
+                    -- 1. Play gunshot sound with debounce
                     local tool = self:FindToolBySlot("Gun")
                     local handle = tool and (tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart"))
+                    if handle then
+                        local gs = handle:FindFirstChild("Gunshot") or handle:FindFirstChildWhichIsA("Sound")
+                        if gs then
+                            pcall(function() gs:Play() end)
+                        end
+                    end
 
                     -- 2. Play custom gun animation if available
                     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -5270,42 +5425,96 @@ function Hub:ProcessSkinDatabase(data)
     table.clear(self.SkinSystem.BySlot.Gun)
     local total = 0
     local entries = data.entries or data
-    for _, rec in pairs(entries) do
+    for sigKey, rec in pairs(entries) do
         if type(rec) == "table" then
+            rec.sig = rec.sig or tostring(sigKey)
             local meta = rec.meta
-        local name = rec.name or (meta and meta.ItemName)
-        local slot = rec.kind or (meta and meta.ItemType)
-        local bucket = slot and self.SkinSystem.BySlot[slot]
-        if name and rec.display and bucket then
-            bucket[#bucket + 1] = rec
-            self.SkinSystem.ByName[name] = rec
-            if meta and meta.ItemName and meta.ItemName ~= name then
-                self.SkinSystem.ByName[meta.ItemName] = rec
-            end
-            local val = meta and (meta.Value or meta.Price or meta.val)
-            if val and tonumber(val) then
-                local numVal = tonumber(val)
-                self.ValuesSystem.CachedValues[name] = numVal
-                if meta and meta.ItemName then
-                    self.ValuesSystem.CachedValues[meta.ItemName] = numVal
+            local name = rec.name or (meta and meta.ItemName)
+            local slot = rec.kind or (meta and meta.ItemType)
+            local bucket = slot and self.SkinSystem.BySlot[slot]
+
+            -- Filter out default knife and default gun completely
+            local lowerName = (name or ""):lower()
+            local lowerMeta = (meta and meta.ItemName and meta.ItemName:lower()) or ""
+            local isDefault = lowerName == "defaultknife" or lowerName == "defaultgun" or lowerName == "default"
+                           or lowerMeta == "defaultknife" or lowerMeta == "defaultgun" or lowerMeta == "default"
+                           or lowerName:find("^default") ~= nil or lowerMeta:find("^default") ~= nil
+
+            if not isDefault and name and rec.display and bucket then
+                bucket[#bucket + 1] = rec
+                self.SkinSystem.ByName[name] = rec
+                if meta and meta.ItemName and meta.ItemName ~= name then
+                    self.SkinSystem.ByName[meta.ItemName] = rec
                 end
+                self.SkinSystem.ByName[slot .. "_" .. name] = rec
+                if meta and meta.ItemName and meta.ItemName ~= name then
+                    self.SkinSystem.ByName[slot .. "_" .. meta.ItemName] = rec
+                end
+                local val = meta and (meta.Value or meta.Price or meta.val)
+                if val and tonumber(val) then
+                    local numVal = tonumber(val)
+                    self.ValuesSystem.CachedValues[name] = numVal
+                    if meta and meta.ItemName then
+                        self.ValuesSystem.CachedValues[meta.ItemName] = numVal
+                    end
+                end
+                local rarity = (meta and meta.Rarity) or "Unknown"
+                local rares = self.SkinSystem.ByRarity[rarity]
+                if not rares then
+                    rares = {}
+                    self.SkinSystem.ByRarity[rarity] = rares
+                end
+                rares[#rares + 1] = rec
+                total = total + 1
             end
-            local rarity = (meta and meta.Rarity) or "Unknown"
-            local rares = self.SkinSystem.ByRarity[rarity]
-            if not rares then
-                rares = {}
-                self.SkinSystem.ByRarity[rarity] = rares
-            end
-            rares[#rares + 1] = rec
-            total = total + 1
-        end
         end
     end
     self.SkinSystem.Loaded = true
     return total
 end
+
 function Hub:LoadSkinDatabase()
-    local content = nil
+    local url = self.SkinSystem.DatabaseURL
+    local freshContent = nil
+
+    -- Always fetch fresh database from GitHub on launch and overwrite local file
+    if url and url ~= "" then
+        local cacheBustUrl = url .. "?t=" .. tostring(os.time())
+        local okNet, res = pcall(function()
+            if game.HttpGet then
+                return game:HttpGet(cacheBustUrl)
+            end
+            local req = (syn and syn.request) or (http and http.request) or http_request or request
+            if req then
+                local resp = req({ Url = cacheBustUrl, Method = "GET" })
+                return resp and resp.Body
+            end
+            return nil
+        end)
+        if okNet and type(res) == "string" and #res > 1000 then
+            local okParse, decoded = pcall(self.Services.HttpService.JSONDecode, self.Services.HttpService, res)
+            if okParse and type(decoded) == "table" and (decoded.entries or next(decoded)) then
+                freshContent = res
+                self:ProcessSkinDatabase(decoded)
+                pcall(function()
+                    if writefile then
+                        if makefolder and (not isfolder or not isfolder("Dynamic_Hub_MM2")) then
+                            pcall(makefolder, "Dynamic_Hub_MM2")
+                        end
+                        pcall(writefile, "Dynamic_Hub_MM2/skins.json", res)
+                        pcall(writefile, "skins.json", res)
+                    end
+                end)
+                return true
+            else
+                self:Notify("Skins Warning", "Downloaded skin database has invalid schema.", 5)
+            end
+        else
+            self:Notify("Skins Warning", "Failed to download skins from GitHub, using local fallback.", 4)
+        end
+    end
+
+    -- Fallback: If GitHub is unreachable, read local file
     local paths = { "Dynamic_Hub_MM2/skins.json", "Dynamic_Hub/skins.json", "skins.json" }
     for _, p in ipairs(paths) do
         local ok, data = pcall(function()
@@ -5317,51 +5526,14 @@ function Hub:LoadSkinDatabase()
         if ok and type(data) == "string" and #data > 1000 then
             local okParse, decoded = pcall(self.Services.HttpService.JSONDecode, self.Services.HttpService, data)
             if okParse and type(decoded) == "table" and (decoded.entries or next(decoded)) then
-                content = data
                 self:ProcessSkinDatabase(decoded)
                 return true
             end
         end
     end
-    if not content then
-        local url = self.SkinSystem.DatabaseURL
-        if url and url ~= "" then
-            local okNet, res = pcall(function()
-                if game.HttpGet then
-                    return game:HttpGet(url)
-                end
-                local req = (syn and syn.request) or (http and http.request) or http_request or request
-                if req then
-                    local resp = req({ Url = url, Method = "GET" })
-                    return resp and resp.Body
-                end
-                return nil
-            end)
-            if okNet and type(res) == "string" and #res > 1000 then
-                local okParse, decoded = pcall(self.Services.HttpService.JSONDecode, self.Services.HttpService, res)
-                if okParse and type(decoded) == "table" and (decoded.entries or next(decoded)) then
-                    content = res
-                    self:ProcessSkinDatabase(decoded)
-                    pcall(function()
-                        if writefile then
-                            if makefolder and (not isfolder or not isfolder("Dynamic_Hub_MM2")) then
-                                pcall(makefolder, "Dynamic_Hub_MM2")
-                            end
-                            pcall(writefile, "Dynamic_Hub_MM2/skins.json", res)
-                            pcall(writefile, "skins.json", res)
-                        end
-                    end)
-                    return true
-                else
-                    self:Notify("Skins Warning", "Downloaded skin database has invalid schema.", 5)
-                end
-            else
-                self:Notify("Skins Warning", "Failed to download skins from repository.", 5)
-            end
-        end
-    end
     return false
 end
+
 function Hub:GetLobby()
     return self.Services.Workspace:FindFirstChild("Lobby") or self.Services.Workspace:FindFirstChild("RegularLobby")
 end
@@ -12003,11 +12175,7 @@ function Hub:BuildSkinsTab(container)
                 img.Size = UDim2.new(1, -10, 1, -40)
                 img.Position = UDim2.new(0, 5, 0, 5)
                 img.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-                local skinImg = (rec.meta and rec.meta.Image)
-                    or (rec.tool and rec.tool.root and rec.tool.root.attrs and rec.tool.root.attrs.Image)
-                    or (rec.tool and rec.tool.root and rec.tool.root.props and rec.tool.root.props.TextureId)
-                    or (rec.display and rec.display.root and rec.display.root.props and rec.display.root.props.TextureID)
-                    or Icons.Skins
+                local skinImg = self:GetSkinImage(rec) or Icons.Skins
                 img.Image = skinImg
                 img.ScaleType = Enum.ScaleType.Fit
                 img.Parent = card
@@ -12029,7 +12197,7 @@ function Hub:BuildSkinsTab(container)
                     if isEquipped then
                         self:UnequipSkin(curSlot)
                     else
-                        self:EquipSkin(sName)
+                        self:EquipSkin(sName, curSlot)
                     end
                     refreshGrid()
                 end)
