@@ -101,6 +101,9 @@ local Hub = {
             PotatoOptimizer = false,
             AntiFling = false,
             WalkFling = false,
+            Fly = false,
+            AntiSystem = false,
+            AntiLagUltra = false,
             Watermark = true,
             BulletTracers = false,
             AutoRejoin = false,
@@ -120,6 +123,7 @@ local Hub = {
             AutoFarmBagLimit = 50,
             AutoFarmTPDelay = 0.85,
             WalkSpeed = 24,
+            FlySpeed = 5,
             CameraFOV = 70,
             ClockTime = 14,
             AmbientTint = "Default",
@@ -2594,7 +2598,7 @@ function Hub:SetupAntiAFK()
     local lp = self.Services.Players.LocalPlayer
     if lp then
         lp.Idled:Connect(function()
-            if self.Config.Toggles.AntiAFK then
+            if self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiAFK then
                 pcall(function()
                     local vu = game:GetService("VirtualUser")
                     vu:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
@@ -3555,6 +3559,7 @@ local skinFxClasses = {
     Attachment = true, Sound = true, ParticleEmitter = true, Beam = true, Trail = true,
     Decal = true, Texture = true, Fire = true, Smoke = true, Sparkles = true,
     PointLight = true, SpotLight = true, SurfaceLight = true, Highlight = true,
+    SurfaceAppearance = true,
 }
 local skinOnHandleClasses = { Attachment = true, Sound = true, Beam = true }
 
@@ -3589,6 +3594,7 @@ function Hub:ClearSkinGarbage(owner)
     for i = #list, 1, -1 do
         local inst = list[i]
         if inst then
+            pcall(function() inst:Disconnect() end)
             pcall(function() inst:Destroy() end)
         end
         list[i] = nil
@@ -4028,18 +4034,63 @@ function Hub:CreateSkinPart(rec)
             if targetSize then
                 part.Size = targetSize
             end
+
+            -- Find texture ID and SurfaceAppearance data from root and nodes
             local tid = props.TextureID or props.TextureId
-            if not tid and type(rec.display and rec.display.nodes) == "table" then
-                for _, n in ipairs(rec.display.nodes) do
-                    if n.props and (n.props.TextureID or n.props.TextureId) then
-                        tid = n.props.TextureID or n.props.TextureId
-                        break
+            local saNode = nil
+            local allNodes = {}
+            if rec.display and type(rec.display.nodes) == "table" then
+                for _, n in ipairs(rec.display.nodes) do table.insert(allNodes, n) end
+            end
+            if rec.tool and type(rec.tool.nodes) == "table" then
+                for _, n in ipairs(rec.tool.nodes) do table.insert(allNodes, n) end
+            end
+            for _, n in ipairs(allNodes) do
+                if n.props and (not tid or tid == "" or tid == "nil") then
+                    if n.props.TextureID and n.props.TextureID ~= "" and n.props.TextureID ~= "nil" then
+                        tid = n.props.TextureID
+                    elseif n.props.TextureId and n.props.TextureId ~= "" and n.props.TextureId ~= "nil" then
+                        tid = n.props.TextureId
                     end
                 end
+                if n.class == "SurfaceAppearance" or (n.props and n.props.ColorMap and n.props.ColorMap ~= "") then
+                    saNode = n
+                end
             end
-            if part:IsA("MeshPart") and tid and tid ~= "" then
-                pcall(function() part.TextureID = tostring(tid) end)
+
+            if (not tid or tid == "" or tid == "nil") and saNode and saNode.props and saNode.props.ColorMap and saNode.props.ColorMap ~= "" then
+                tid = saNode.props.ColorMap
             end
+
+            local hasTexture = (tid and tid ~= "" and tid ~= "nil") or (saNode ~= nil)
+
+            if part:IsA("MeshPart") then
+                if tid and tid ~= "" and tid ~= "nil" then
+                    pcall(function() part.TextureID = tostring(tid) end)
+                end
+                -- Ensure SurfaceAppearance exists for modern PBR meshes
+                local sa = part:FindFirstChildOfClass("SurfaceAppearance")
+                if not sa and hasTexture then
+                    local okSA, newSA = pcall(Instance.new, "SurfaceAppearance")
+                    if okSA and newSA then
+                        sa = newSA
+                        sa.Name = "SkinSurfaceAppearance"
+                        sa.Parent = part
+                    end
+                end
+                if sa then
+                    if saNode and saNode.props then
+                        self:ApplySkinProps(sa, saNode.props)
+                    end
+                    if tid and tid ~= "" and tid ~= "nil" then
+                        pcall(function() sa.ColorMap = tostring(tid) end)
+                    end
+                end
+                if hasTexture then
+                    part.Color = Color3.new(1, 1, 1)
+                end
+            end
+
             local sm = part:FindFirstChildOfClass("SpecialMesh")
             if sm then
                 if targetSize and type(props.MeshSize) == "table" then
@@ -4048,8 +4099,10 @@ function Hub:CreateSkinPart(rec)
                     local sz = targetSize.Z / math.max(0.001, props.MeshSize[3])
                     sm.Scale = Vector3.new(sx, sy, sz)
                 end
-                if tid and tid ~= "" then
+                if tid and tid ~= "" and tid ~= "nil" then
                     pcall(function() sm.TextureId = tostring(tid) end)
+                    sm.VertexColor = Vector3.new(1, 1, 1)
+                    part.Color = Color3.new(1, 1, 1)
                 end
             end
             part.Anchored = true
@@ -4089,8 +4142,18 @@ function Hub:CreateSkinPart(rec)
         self:ApplySkinProps(mesh, specialNode.props)
         pcall(function() mesh.MeshId = specialNode.props.MeshId end)
         local smTid = specialNode.props.TextureId or specialNode.props.TextureID or props.TextureId or props.TextureID
-        if smTid and smTid ~= "" then
+        if not smTid or smTid == "" or smTid == "nil" then
+            for _, n in ipairs(rec.display.nodes) do
+                if n.class == "SurfaceAppearance" and n.props and n.props.ColorMap and n.props.ColorMap ~= "" then
+                    smTid = n.props.ColorMap
+                    break
+                end
+            end
+        end
+        if smTid and smTid ~= "" and smTid ~= "nil" then
             pcall(function() mesh.TextureId = tostring(smTid) end)
+            mesh.VertexColor = Vector3.new(1, 1, 1)
+            part.Color = Color3.new(1, 1, 1)
         end
         if specialNode.props.Scale and type(specialNode.props.Scale) == "table" then
             mesh.Scale = Vector3.new(specialNode.props.Scale[1], specialNode.props.Scale[2], specialNode.props.Scale[3])
@@ -4122,7 +4185,28 @@ function Hub:ApplySkinFX(rec, owner, body, handle)
 
     for _, node in ipairs(allNodes) do
         local class = node.class
-        if skinFxClasses and skinFxClasses[class] then
+        if class == "SurfaceAppearance" then
+            if body:IsA("MeshPart") then
+                local sa = body:FindFirstChildOfClass("SurfaceAppearance")
+                if not sa then
+                    local okSA, inst = pcall(Instance.new, "SurfaceAppearance")
+                    if okSA and inst then
+                        self:ApplySkinProps(inst, node.props)
+                        inst.Parent = body
+                        if node.path then paths[node.path] = inst end
+                        self:RegisterSkinGarbage(owner, inst)
+                    end
+                else
+                    self:ApplySkinProps(sa, node.props)
+                end
+            else
+                local sm = body:FindFirstChildOfClass("SpecialMesh") or body:FindFirstChildWhichIsA("SpecialMesh", true)
+                if sm and node.props and node.props.ColorMap and node.props.ColorMap ~= "" and node.props.ColorMap ~= "nil" then
+                    pcall(function() sm.TextureId = tostring(node.props.ColorMap) end)
+                    sm.VertexColor = Vector3.new(1, 1, 1)
+                end
+            end
+        elseif skinFxClasses and skinFxClasses[class] then
             local parent = node.parent and paths[node.parent]
             if not parent then
                 parent = (skinOnHandleClasses and skinOnHandleClasses[class] and handle) or body
@@ -4176,19 +4260,6 @@ function Hub:ApplySkinSoundsAndAnims(rec, tool)
     local normalGunSound = nil
     local customReload = nil
 
-    -- Sci-Fi Raygun authentic custom laser blast sound
-    local rName = (rec.name or ""):lower()
-    local metaName = (rec.meta and rec.meta.ItemName and rec.meta.ItemName:lower()) or ""
-    if rName:find("raygun") or rName:find("alien") or metaName:find("raygun") or metaName:find("ray gun") then
-        local laserSound = {
-            Name = "Gunshot",
-            SoundId = "rbxassetid://131179973", -- Authentic SBAudio Ray Gun shoot sound
-            Volume = 1,
-            PlaybackSpeed = 1
-        }
-        table.insert(customSounds, laserSound)
-        altGunSound = laserSound
-    end
 
     for _, n in ipairs(allNodes) do
         if n.class == "Sound" and n.props and n.props.SoundId then
@@ -4221,6 +4292,31 @@ function Hub:ApplySkinSoundsAndAnims(rec, tool)
         end
     end
 
+    -- Restore all tool sounds and animations from saved original state before applying new skin properties
+    for _, s in ipairs(tool:GetDescendants()) do
+        if s:IsA("Sound") then
+            local saved = self.SkinSystem.Saved[s]
+            if saved then
+                if saved.soundId then pcall(function() s.SoundId = saved.soundId end) end
+                if saved.volume ~= nil then pcall(function() s.Volume = saved.volume end) end
+                if saved.playbackSpeed ~= nil then pcall(function() s.PlaybackSpeed = saved.playbackSpeed end) end
+            else
+                self:BackupSkinProp(s, {
+                    soundId = s.SoundId,
+                    volume = s.Volume,
+                    playbackSpeed = s.PlaybackSpeed,
+                })
+            end
+        elseif s:IsA("Animation") then
+            local saved = self.SkinSystem.Saved[s]
+            if saved and saved.animId then
+                pcall(function() s.AnimationId = saved.animId end)
+            else
+                self:BackupSkinProp(s, { animId = s.AnimationId })
+            end
+        end
+    end
+
     if slot == "Gun" then
         local bestShotSound = altGunSound or normalGunSound
         for _, s in ipairs(tool:GetDescendants()) do
@@ -4228,20 +4324,39 @@ function Hub:ApplySkinSoundsAndAnims(rec, tool)
                 local sName = s.Name:lower()
                 if sName:find("shot") or sName:find("shoot") or sName == "gunshot" then
                     if bestShotSound then
-                        self:BackupSkinProp(s, { soundId = s.SoundId, volume = s.Volume })
+                        self:BackupSkinProp(s, { soundId = s.SoundId, volume = s.Volume, playbackSpeed = s.PlaybackSpeed })
                         s.SoundId = bestShotSound.SoundId
                         s.Volume = bestShotSound.Volume or 1
                         if bestShotSound.PlaybackSpeed then s.PlaybackSpeed = bestShotSound.PlaybackSpeed end
                         table.insert(soundsToPreload, s)
+                    else
+                        local origId = (self.SkinSystem.Saved[s] and self.SkinSystem.Saved[s].soundId) or "rbxassetid://10209803"
+                        local origVol = (self.SkinSystem.Saved[s] and self.SkinSystem.Saved[s].volume) or 1
+                        local origSpeed = (self.SkinSystem.Saved[s] and self.SkinSystem.Saved[s].playbackSpeed) or 1
+                        s.SoundId = origId
+                        s.Volume = origVol
+                        s.PlaybackSpeed = origSpeed
                     end
                 elseif sName:find("alt") then
-                    self:BackupSkinProp(s, { soundId = s.SoundId, volume = s.Volume })
-                    s.Volume = 0
-                elseif sName:find("reload") and customReload then
-                    self:BackupSkinProp(s, { soundId = s.SoundId, volume = s.Volume })
-                    s.SoundId = customReload.SoundId
-                    s.Volume = customReload.Volume or 1
-                    table.insert(soundsToPreload, s)
+                    if altGunSound then
+                        self:BackupSkinProp(s, { soundId = s.SoundId, volume = s.Volume, playbackSpeed = s.PlaybackSpeed })
+                        s.Volume = 0
+                    else
+                        local origVol = (self.SkinSystem.Saved[s] and self.SkinSystem.Saved[s].volume) or 1
+                        s.Volume = origVol
+                    end
+                elseif sName:find("reload") then
+                    if customReload then
+                        self:BackupSkinProp(s, { soundId = s.SoundId, volume = s.Volume, playbackSpeed = s.PlaybackSpeed })
+                        s.SoundId = customReload.SoundId
+                        s.Volume = customReload.Volume or 1
+                        table.insert(soundsToPreload, s)
+                    else
+                        local origId = self.SkinSystem.Saved[s] and self.SkinSystem.Saved[s].soundId
+                        if origId then s.SoundId = origId end
+                        local origVol = (self.SkinSystem.Saved[s] and self.SkinSystem.Saved[s].volume) or 1
+                        s.Volume = origVol
+                    end
                 end
             end
         end
@@ -4269,7 +4384,7 @@ function Hub:ApplySkinSoundsAndAnims(rec, tool)
                 existing.Parent = handle
                 self:RegisterSkinGarbage(tool, existing)
             elseif existing then
-                self:BackupSkinProp(existing, { soundId = existing.SoundId, volume = existing.Volume })
+                self:BackupSkinProp(existing, { soundId = existing.SoundId, volume = existing.Volume, playbackSpeed = existing.PlaybackSpeed })
                 existing.SoundId = cs.SoundId
                 existing.Volume = cs.Volume or 1
                 if cs.PlaybackSpeed then existing.PlaybackSpeed = cs.PlaybackSpeed end
@@ -4281,7 +4396,7 @@ function Hub:ApplySkinSoundsAndAnims(rec, tool)
                     local sName = s.Name:lower()
                     if (sName == "kill" and (csName:find("kill") or csName:find("hit")))
                        or (sName == "throw" and csName:find("throw")) then
-                        self:BackupSkinProp(s, { soundId = s.SoundId, volume = s.Volume })
+                        self:BackupSkinProp(s, { soundId = s.SoundId, volume = s.Volume, playbackSpeed = s.PlaybackSpeed })
                         s.SoundId = cs.SoundId
                         s.Volume = cs.Volume or 1
                         table.insert(soundsToPreload, s)
@@ -4302,18 +4417,26 @@ function Hub:ApplySkinSoundsAndAnims(rec, tool)
     for _, a in ipairs(tool:GetDescendants()) do
         if a:IsA("Animation") then
             local aName = a.Name:lower()
+            local matched = nil
             for _, ca in ipairs(customAnims) do
                 local caName = (ca.Name or ""):lower()
-                local match = (aName == caName)
-                if not match and (aName:find("shoot") or aName:find("slash") or aName:find("stab") or aName:find("hold")) then
+                local isMatch = (aName == caName)
+                if not isMatch and (aName:find("shoot") or aName:find("slash") or aName:find("stab") or aName:find("hold")) then
                     if (aName:find("shoot") and caName:find("shoot")) or (aName:find("slash") and caName:find("slash")) or (aName:find("stab") and caName:find("stab")) then
-                        match = true
+                        isMatch = true
                     end
                 end
-                if match then
-                    self:BackupSkinProp(a, { animId = a.AnimationId })
-                    a.AnimationId = ca.AnimationId
+                if isMatch then
+                    matched = ca
+                    break
                 end
+            end
+            if matched then
+                self:BackupSkinProp(a, { animId = a.AnimationId })
+                a.AnimationId = matched.AnimationId
+            else
+                local origId = self.SkinSystem.Saved[a] and self.SkinSystem.Saved[a].animId
+                if origId then a.AnimationId = origId end
             end
         end
     end
@@ -4434,13 +4557,17 @@ function Hub:GetSkinGripCFrame(rec, slot)
         if name:find("bringer") or meshId:find("4730813852") or meshId:find("4751498862") or meshId:find("4751501078") or meshId:find("4749071819") then
             return CFrame.new(0, -0.32, 0.46) * CFrame.Angles(math.rad(14), 0, 0)
         end
-        -- Crossbows (Harvester, Icepiercer): horizontal forward grip aligned with hand
-        if name:find("harvester") or name:find("icepiercer") or name:find("bow") or name:find("crossbow") or meshId:find("7775027413") or meshId:find("11868991644") then
+        -- Crossbows / Scopes / Rifles (Harvester, Icepiercer, Gingerscope, Emberbow, Chroma Emberbow): horizontal forward grip aligned with hand
+        if name:find("harvester") or name:find("icepiercer") or name:find("gingerscope") or name:find("scope") or name:find("bow") or name:find("crossbow") or meshId:find("7775027413") or meshId:find("11868991644") or meshId:find("15374602183") or meshId:find("78349467382122") then
             return CFrame.new(0, -0.25, 0.45)
         end
         -- Luger family: upright modeled mesh, identity rotation grip
         if name:find("luger") or name == "sugar" or meshId:find("95356090") or meshId:find("101086719") then
             return CFrame.new(0, -0.206, 0.5, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        end
+        -- Heavy Launchers / Cannons (Snowcannon, Chroma Snowcannon)
+        if name:find("cannon") or meshId:find("99836890880541") then
+            return CFrame.new(0, -0.3, 0.45, 1, 0, 0, 0, 1, 0, 0, 0, 1)
         end
         -- Sci-Fi / Energy / Raygun / Laser / Blaster / Phaser / UFO / Xeno family
         if name:find("raygun") or name:find("alien") or name:find("xeno") or name:find("laser") or name:find("blaster") or name:find("phaser") or name:find("ufo") or meshId:find("115447220952926") or meshId:find("96867436912658") or meshId:find("92656610") or meshId:find("69486593") then
@@ -4464,8 +4591,10 @@ function Hub:GetSkinGripCFrame(rec, slot)
             return CFrame.new(0.05, 0.18, 1.25, 1, 0, 0, 0, 0, 1, 0, -1, 0)
         elseif name:find("heartblade") then
             return CFrame.new(0.02, -1.42, 0.02, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-        elseif name:find("axe") or name:find("scythe") or name:find("chopper") then
+        elseif name:find("axe") or name:find("scythe") or name:find("sickle") or name:find("chopper") then
             return CFrame.new(0.05, -0.9, 0.35, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        elseif name:find("celestial") or meshId:find("109711282082830") then
+            return CFrame.new(0, -0.06, -0.71, 1, 0, 0, 0, 1, 0, 0, 0, 1)
         end
         return CFrame.new(0, -1, -0.1, 1, 0, 0, 0, 1, 0, 0, 0, 1)
     end
@@ -4477,7 +4606,7 @@ function Hub:ApplyChromaEffect(rec, body)
     local rName = rec.name or ""
     local mName = (rec.meta and rec.meta.ItemName) or ""
     local rarity = (rec.meta and rec.meta.Rarity) or ""
-    if rName:lower():find("chroma") or mName:lower():find("chroma") or rarity:lower() == "chroma" then
+    if rec.isChroma == true or (rec.meta and (rec.meta.Chroma == true or rec.meta.Chroma == "true")) or rName:lower():find("chroma") or mName:lower():find("chroma") or rarity:lower() == "chroma" then
         isChroma = true
     else
         for _, n in ipairs(rec.display and rec.display.nodes or {}) do
@@ -4501,7 +4630,7 @@ function Hub:ApplyChromaEffect(rec, body)
         end
     end
 
-    local sm = body:FindFirstChildOfClass("SpecialMesh")
+    local sm = body:FindFirstChildOfClass("SpecialMesh") or body:FindFirstChildWhichIsA("SpecialMesh", true)
     local decals = {}
     for _, ch in ipairs(body:GetDescendants()) do
         if ch:IsA("Decal") and (ch.Name:lower():find("chroma") or (ch.Texture and ch.Texture:find("3171206966"))) then
@@ -4520,7 +4649,7 @@ function Hub:ApplyChromaEffect(rec, body)
         local rainbowColor = Color3.fromHSV(hue, 0.9, 1)
 
         body.Color = rainbowColor
-        if sm and (not sm.TextureId or sm.TextureId == "") then
+        if sm then
             sm.VertexColor = Vector3.new(rainbowColor.R, rainbowColor.G, rainbowColor.B)
         end
         for _, d in ipairs(decals) do
@@ -4669,7 +4798,17 @@ function Hub:ApplySkinToDisplay(rec)
     local dispAtt = (rc and rc.Attachment1) or display:FindFirstChild("CustomAttachment") or display:FindFirstChild("Attachment") or display:FindFirstChildOfClass("Attachment")
     local isCrossbow = false
     local recName = (rec.name or ""):lower()
-    if recName:find("harvester") or recName:find("icepiercer") or recName:find("bow") then
+    local meshId = ""
+    for _, n in ipairs((rec.display and rec.display.nodes) or {}) do
+        if n.class == "SpecialMesh" and n.props and n.props.MeshId then
+            meshId = tostring(n.props.MeshId)
+            break
+        end
+    end
+    if rec.display and rec.display.root and rec.display.root.props and rec.display.root.props.MeshId then
+        meshId = tostring(rec.display.root.props.MeshId)
+    end
+    if recName:find("harvester") or recName:find("icepiercer") or recName:find("gingerscope") or recName:find("scope") or recName:find("bow") or recName:find("crossbow") or meshId:find("15374602183") or meshId:find("78349467382122") or meshId:find("7775027413") or meshId:find("11868991644") then
         isCrossbow = true
     end
 
@@ -5010,10 +5149,6 @@ function Hub:SetupSkinWatchers()
             if ch:IsA("Tool") then
                 checkAndApplyTool(ch)
                 ch.Equipped:Connect(function()
-                    local csm = ch:FindFirstChild("CustomSkinMesh")
-                    if csm and csm.Parent == ch then
-                        return
-                    end
                     checkAndApplyTool(ch)
                 end)
                 for _, delaySec in ipairs({ 0.04, 0.12, 0.25 }) do
@@ -5032,10 +5167,6 @@ function Hub:SetupSkinWatchers()
             if ch:IsA("Tool") then
                 checkAndApplyTool(ch)
                 ch.Equipped:Connect(function()
-                    local csm = ch:FindFirstChild("CustomSkinMesh")
-                    if csm and csm.Parent == ch then
-                        return
-                    end
                     checkAndApplyTool(ch)
                 end)
             end
@@ -5430,7 +5561,13 @@ function Hub:ProcessSkinDatabase(data)
             rec.sig = rec.sig or tostring(sigKey)
             local meta = rec.meta
             local name = rec.name or (meta and meta.ItemName)
-            local slot = rec.kind or (meta and meta.ItemType)
+            local rawSlot = tostring(rec.kind or (meta and meta.ItemType) or "")
+            local slot = nil
+            if rawSlot:lower():find("gun") then
+                slot = "Gun"
+            elseif rawSlot:lower():find("knife") then
+                slot = "Knife"
+            end
             local bucket = slot and self.SkinSystem.BySlot[slot]
 
             -- Filter out default knife and default gun completely
@@ -5470,51 +5607,14 @@ function Hub:ProcessSkinDatabase(data)
         end
     end
     self.SkinSystem.Loaded = true
+    if self.SkinSystem.RefreshUI then
+        task.defer(self.SkinSystem.RefreshUI)
+    end
     return total
 end
 
 function Hub:LoadSkinDatabase()
-    local url = self.SkinSystem.DatabaseURL
-    local freshContent = nil
-
-    -- Always fetch fresh database from GitHub on launch and overwrite local file
-    if url and url ~= "" then
-        local cacheBustUrl = url .. "?t=" .. tostring(os.time())
-        local okNet, res = pcall(function()
-            if game.HttpGet then
-                return game:HttpGet(cacheBustUrl)
-            end
-            local req = (syn and syn.request) or (http and http.request) or http_request or request
-            if req then
-                local resp = req({ Url = cacheBustUrl, Method = "GET" })
-                return resp and resp.Body
-            end
-            return nil
-        end)
-        if okNet and type(res) == "string" and #res > 1000 then
-            local okParse, decoded = pcall(self.Services.HttpService.JSONDecode, self.Services.HttpService, res)
-            if okParse and type(decoded) == "table" and (decoded.entries or next(decoded)) then
-                freshContent = res
-                self:ProcessSkinDatabase(decoded)
-                pcall(function()
-                    if writefile then
-                        if makefolder and (not isfolder or not isfolder("Dynamic_Hub_MM2")) then
-                            pcall(makefolder, "Dynamic_Hub_MM2")
-                        end
-                        pcall(writefile, "Dynamic_Hub_MM2/skins.json", res)
-                        pcall(writefile, "skins.json", res)
-                    end
-                end)
-                return true
-            else
-                self:Notify("Skins Warning", "Downloaded skin database has invalid schema.", 5)
-            end
-        else
-            self:Notify("Skins Warning", "Failed to download skins from GitHub, using local fallback.", 4)
-        end
-    end
-
-    -- Fallback: If GitHub is unreachable, read local file
+    -- 1. Read LOCAL file first (prioritize local scraped database so it is never overwritten)
     local paths = { "Dynamic_Hub_MM2/skins.json", "Dynamic_Hub/skins.json", "skins.json" }
     for _, p in ipairs(paths) do
         local ok, data = pcall(function()
@@ -5526,9 +5626,50 @@ function Hub:LoadSkinDatabase()
         if ok and type(data) == "string" and #data > 1000 then
             local okParse, decoded = pcall(self.Services.HttpService.JSONDecode, self.Services.HttpService, data)
             if okParse and type(decoded) == "table" and (decoded.entries or next(decoded)) then
-                self:ProcessSkinDatabase(decoded)
-                return true
+                local count = self:ProcessSkinDatabase(decoded)
+                if count and count > 0 then
+                    self:Notify("Skins Loaded", "Loaded " .. tostring(count) .. " skins from local file.", 3)
+                    return true
+                end
             end
+        end
+    end
+
+    -- 2. Fallback: Download from GitHub ONLY if no local skins file was found
+    local url = self.SkinSystem.DatabaseURL
+    if url and url ~= "" then
+        local cacheBustUrl = url .. "?t=" .. tostring(os.time())
+        local okNet, res = pcall(function()
+            if game.HttpGet then
+                return game:HttpGet(cacheBustUrl)
+            end
+            local env = (getfenv and getfenv()) or {}
+            local req = env.request or env.http_request or (env.syn and env.syn.request) or (env.http and env.http.request)
+            if req then
+                local resp = req({ Url = cacheBustUrl, Method = "GET" })
+                return resp and resp.Body
+            end
+            return nil
+        end)
+        if okNet and type(res) == "string" and #res > 1000 then
+            local okParse, decoded = pcall(self.Services.HttpService.JSONDecode, self.Services.HttpService, res)
+            if okParse and type(decoded) == "table" and (decoded.entries or next(decoded)) then
+                local count = self:ProcessSkinDatabase(decoded)
+                pcall(function()
+                    if writefile then
+                        if makefolder and (not isfolder or not isfolder("Dynamic_Hub_MM2")) then
+                            pcall(makefolder, "Dynamic_Hub_MM2")
+                        end
+                        pcall(writefile, "Dynamic_Hub_MM2/skins.json", res)
+                    end
+                end)
+                self:Notify("Skins Loaded", "Downloaded " .. tostring(count) .. " skins from remote.", 3)
+                return true
+            else
+                self:Notify("Skins Warning", "Downloaded skin database has invalid schema.", 5)
+            end
+        else
+            self:Notify("Skins Warning", "Failed to download skins from GitHub, no local file found.", 4)
         end
     end
     return false
@@ -6639,17 +6780,17 @@ function Hub:StartMainLoops()
     local function hookPlayerAntiFling(p)
         if p == self.Services.Players.LocalPlayer then return end
         p.CharacterAdded:Connect(function(char)
-            if self.Config.Toggles.AntiFling and (not self.Config.Toggles.WalkFling) then
+            if (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.WalkFling then
                 task.wait(0.1)
                 disablePlayerCollisions(char)
                 char.DescendantAdded:Connect(function(child)
-                    if self.Config.Toggles.AntiFling and (not self.Config.Toggles.WalkFling) and child:IsA("BasePart") and child.CanCollide then
+                    if ((self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.WalkFling) and child:IsA("BasePart") and child.CanCollide then
                         child.CanCollide = false
                     end
                 end)
             end
         end)
-        if p.Character and self.Config.Toggles.AntiFling and (not self.Config.Toggles.WalkFling) then
+        if p.Character and ((self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.WalkFling) then
             disablePlayerCollisions(p.Character)
         end
     end
@@ -6662,7 +6803,7 @@ function Hub:StartMainLoops()
     task.spawn(function()
         while true do
             task.wait(1.0)
-            if self.Config.Toggles.AntiFling and (not self.Config.Toggles.WalkFling) then
+            if (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.WalkFling then
                 local lp = self.Services.Players.LocalPlayer
                 for _, p in ipairs(self.Services.Players:GetPlayers()) do
                     if p ~= lp and p.Character then
@@ -6679,11 +6820,9 @@ function Hub:StartMainLoops()
         local root = char and self:GetRoot(char)
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not (root and hum and hum.Health > 0) then return end
-        if not self.AutoFarm.IsActive then
-            if not (self.Config.Toggles.WalkFling and flingTargetTouching) then
-                if root.AssemblyAngularVelocity.Magnitude > 25 then
-                    root.AssemblyAngularVelocity = Vector3.zero
-                end
+        if not self.AutoFarm.IsActive and not self.Config.Toggles.WalkFling then
+            if root.AssemblyAngularVelocity.Magnitude > 25 then
+                root.AssemblyAngularVelocity = Vector3.zero
             end
             local vel = root.AssemblyLinearVelocity
             local horizSpeed = Vector2.new(vel.X, vel.Z).Magnitude
@@ -6711,85 +6850,114 @@ function Hub:StartMainLoops()
             end
         end
     end)
+
+    -- Walk Fling (Argon 4 logic: CustomPhysicalProperties max density + HRP collision filter)
+    local wasWalkFling = false
     self.Services.RunService.Stepped:Connect(function()
         local lp = self.Services.Players.LocalPlayer
         local char = lp and lp.Character
-        local root = char and self:GetRoot(char)
+        local myHrp = char and (char:FindFirstChild("HumanoidRootPart") or self:GetRoot(char))
         local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-        -- AntiFling: Always walk through other players
-        if self.Config.Toggles.AntiFling then
-            for _, p in ipairs(self.Services.Players:GetPlayers()) do
-                if p ~= lp and p.Character then
-                    for _, part in ipairs(p.Character:GetDescendants()) do
+        if self.Config.Toggles.WalkFling then
+            wasWalkFling = true
+            if myHrp then
+                myHrp.CustomPhysicalProperties = PhysicalProperties.new(100, 0, 0, 0, 0)
+            end
+            if hum and hum.Health > 0 then
+                hum.PlatformStand = false
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+                hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+            end
+
+            -- Ensure local character preserves solid collisions with walls/map unless NoClip is active
+            if not self.Config.Toggles.NoClip and char then
+                local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+                if torso and not torso.CanCollide then
+                    self:RestoreCollisions()
+                end
+            end
+
+            -- Disable collisions on ALL other players' parts so you walk through players smoothly (just like Anti-Fling):
+            for _, player in ipairs(self.Services.Players:GetPlayers()) do
+                if player ~= lp and player.Character then
+                    for _, part in ipairs(player.Character:GetDescendants()) do
                         if part:IsA("BasePart") and part.CanCollide then
                             part.CanCollide = false
                         end
                     end
                 end
             end
-        end
-
-        -- Walk Fling: Stable skid-fling without launching yourself
-        if self.Config.Toggles.WalkFling then
-            if not (root and hum and hum.Health > 0) then
-                flingTargetTouching = false
-                return
+        else
+            if wasWalkFling then
+                wasWalkFling = false
+                if myHrp and myHrp.CustomPhysicalProperties ~= nil then
+                    myHrp.CustomPhysicalProperties = nil
+                end
+                if not self.Config.Toggles.NoClip then
+                    self:RestoreCollisions()
+                end
             end
-            hum.PlatformStand = false
-            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-            hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
-            local myPos = root.Position
-            local touchingRoot = nil
-            for _, other in ipairs(self.Services.Players:GetPlayers()) do
-                if other ~= lp and other.Character then
-                    local oChar = other.Character
-                    local oRoot = self:GetRoot(oChar) or oChar:FindFirstChild("HumanoidRootPart") or oChar:FindFirstChild("Torso")
-                    local oHum = oChar:FindFirstChildOfClass("Humanoid")
-                    if oRoot and oHum and oHum.Health > 0 then
-                        local dist = (oRoot.Position - myPos).Magnitude
-                        if dist <= 4.0 then
-                            touchingRoot = oRoot
-                            break
+
+            -- AntiFling: Always walk through other players
+            if self.Config.Toggles.AntiFling then
+                for _, p in ipairs(self.Services.Players:GetPlayers()) do
+                    if p ~= lp and p.Character then
+                        for _, part in ipairs(p.Character:GetDescendants()) do
+                            if part:IsA("BasePart") and part.CanCollide then
+                                part.CanCollide = false
+                            end
                         end
                     end
                 end
             end
-            if touchingRoot then
-                flingTargetTouching = true
-                local oldCF = root.CFrame
-                root.AssemblyLinearVelocity = Vector3.new(0, 5000, 0)
-                root.AssemblyAngularVelocity = Vector3.new(0, 5000, 0)
-                task.defer(function()
-                    if root and root.Parent then
-                        root.AssemblyLinearVelocity = Vector3.zero
-                        root.AssemblyAngularVelocity = Vector3.zero
-                        root.CFrame = oldCF
-                    end
-                end)
-            else
-                flingTargetTouching = false
-                root.AssemblyAngularVelocity = Vector3.zero
-            end
-        else
-            if flingTargetTouching then
-                flingTargetTouching = false
-            end
         end
     end)
-    self.Services.RunService.Heartbeat:Connect(function()
-        if self.Config.Toggles.WalkFling then
-            local lp = self.Services.Players.LocalPlayer
-            local char = lp and lp.Character
-            local root = char and self:GetRoot(char)
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if root and hum and hum.Health > 0 then
-                root.AssemblyAngularVelocity = Vector3.zero
-                local moveDir = hum.MoveDirection
-                local walkSpeed = math.max(hum.WalkSpeed, 16)
-                local curY = math.clamp(root.AssemblyLinearVelocity.Y, -25, 15)
-                root.AssemblyLinearVelocity = Vector3.new(moveDir.X * walkSpeed, curY, moveDir.Z * walkSpeed)
+
+    -- Walk Fling (Argon 4 logic: Heartbeat velocity impulse -> RenderStepped client restore -> Stepped oscillation)
+    local walkFlingMovel = 0.1
+    task.spawn(function()
+        while true do
+            self.Services.RunService.Heartbeat:Wait()
+
+            if self.Config.Toggles.WalkFling then
+                local lp = self.Services.Players.LocalPlayer
+                local char = lp and lp.Character
+                local hrp = char and (char:FindFirstChild("HumanoidRootPart") or self:GetRoot(char))
+
+                if hrp and hrp.Parent then
+                    -- Proximity check: only apply fling velocity pulse when an opponent is nearby (<= 7.5 studs)
+                    local hasTargetNear = false
+                    for _, player in ipairs(self.Services.Players:GetPlayers()) do
+                        if player ~= lp and player.Character then
+                            local tHrp = player.Character:FindFirstChild("HumanoidRootPart")
+                            if tHrp and (hrp.Position - tHrp.Position).Magnitude <= 7.5 then
+                                hasTargetNear = true
+                                break
+                            end
+                        end
+                    end
+
+                    if hasTargetNear then
+                        local oldVel = hrp.AssemblyLinearVelocity
+                        local oldCFrame = hrp.CFrame
+
+                        hrp.AssemblyLinearVelocity = oldVel * 10000 + Vector3.new(0, 10000, 0)
+
+                        self.Services.RunService.RenderStepped:Wait()
+                        if hrp and hrp.Parent then
+                            hrp.AssemblyLinearVelocity = oldVel
+                            hrp.CFrame = oldCFrame
+                        end
+
+                        self.Services.RunService.Stepped:Wait()
+                        if hrp and hrp.Parent then
+                            hrp.AssemblyLinearVelocity = oldVel + Vector3.new(0, walkFlingMovel, 0)
+                            walkFlingMovel = -walkFlingMovel
+                        end
+                    end
+                end
             end
         end
     end)
@@ -6827,6 +6995,7 @@ function Hub:StartMainLoops()
         end
     end)
     self:SetupAntiAFK()
+    self:SetupFly()
     self:LoadCachedValues()
     task.spawn(function()
         self:FetchValues()
@@ -10879,6 +11048,9 @@ function Hub:SwitchTab(tabName)
         if page then
             if name == tabName then
                 page.Visible = true
+                if name == "Skins" and self.SkinSystem.RefreshUI then
+                    task.defer(self.SkinSystem.RefreshUI)
+                end
                 task.defer(function()
                     local wrapper = page:FindFirstChild("DualColWrapper")
                     if wrapper then
@@ -11158,6 +11330,9 @@ function Hub:ResolveToggleKey(title, configKey)
         ["Infinite Jump"] = "InfiniteJump",
         ["NoClip"] = "NoClip",
         ["Walk Fling"] = "WalkFling",
+        ["Fly"] = "Fly",
+        ["Anti"] = "AntiSystem",
+        ["Anti System"] = "AntiSystem",
         ["Enable Vote Duplicator"] = "VoteDup",
         ["Watermark HUD"] = "Watermark",
         ["UI Click Sounds"] = "UISounds",
@@ -11205,9 +11380,12 @@ local BindableFeatures = {
     ["NoClip"] = true,
     ["Anti-AFK (Anti-Kick)"] = true, ["AntiAFK"] = true,
     ["Auto Farm"] = true, ["AutoFarm"] = true,
+    ["Fly"] = true,
+    ["Walk Fling"] = true, ["WalkFling"] = true,
+    ["Anti"] = true, ["AntiSystem"] = true,
 }
 
-function Hub:CreateToggle(section, title, defaultState, callback, configKey, hasKeybind)
+function Hub:CreateToggle(section, title, defaultState, callback, configKey, hasKeybind, gearCallback)
     local regKey = self:ResolveToggleKey(title, configKey)
     if regKey and self.Config.Toggles[regKey] == nil then
         self.Config.Toggles[regKey] = defaultState
@@ -11325,7 +11503,11 @@ function Hub:CreateToggle(section, title, defaultState, callback, configKey, has
 
         gearBtn.MouseButton1Click:Connect(function()
             self:PlayUISound()
-            self:OpenKeybindPopup(regKey, title, gearBtn)
+            if gearCallback then
+                gearCallback(gearBtn)
+            else
+                self:OpenKeybindPopup(regKey, title, gearBtn)
+            end
         end)
     end
 
@@ -11953,9 +12135,472 @@ function Hub:BuildVisualsTab(container)
         self:UpdateCrosshairGeometry()
     end)
 end
+function Hub:CreateToggleWithGear(section, title, defaultState, callback, gearCallback, configKey)
+    local regKey = self:ResolveToggleKey(title, configKey)
+    if regKey and self.Config.Toggles[regKey] == nil then
+        self.Config.Toggles[regKey] = defaultState
+    end
+    self.FeatureTitles = self.FeatureTitles or {}
+    if regKey then
+        self.FeatureTitles[regKey] = title
+    end
+
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 30)
+    row.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+    row.ClipsDescendants = true
+    row.Parent = section
+    self:Corner(row, 6)
+    self:Stroke(row, Color3.fromRGB(32, 32, 42), 1)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.Size = UDim2.new(1, -80, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.Text = title
+    lbl.TextColor3 = defaultState and self.Theme.TextPrimary or self.Theme.TextDim
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local gearBtn = Instance.new("TextButton")
+    gearBtn.Size = UDim2.new(0, 22, 0, 20)
+    gearBtn.Position = UDim2.new(1, -72, 0.5, -10)
+    gearBtn.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+    gearBtn.Text = ""
+    gearBtn.AutoButtonColor = false
+    gearBtn.Parent = row
+    self:Corner(gearBtn, 4)
+    local gearStroke = self:Stroke(gearBtn, Color3.fromRGB(36, 36, 48), 1)
+
+    local gearIcon = Instance.new("ImageLabel")
+    gearIcon.Size = UDim2.new(0, 13, 0, 13)
+    gearIcon.Position = UDim2.new(0.5, -6, 0.5, -6)
+    gearIcon.BackgroundTransparency = 1
+    gearIcon.Image = Icons.Settings or "rbxassetid://10734950309"
+    gearIcon.ImageColor3 = Color3.fromRGB(160, 165, 180)
+    gearIcon.Parent = gearBtn
+
+    gearBtn.MouseEnter:Connect(function()
+        self:Tween(gearBtn, { BackgroundColor3 = Color3.fromRGB(34, 36, 48) }, 0.15)
+        self:Tween(gearStroke, { Color = self.Theme.Accent or Color3.fromRGB(130, 90, 255) }, 0.15)
+        self:Tween(gearIcon, { ImageColor3 = Color3.fromRGB(255, 255, 255) }, 0.15)
+    end)
+    gearBtn.MouseLeave:Connect(function()
+        self:Tween(gearBtn, { BackgroundColor3 = Color3.fromRGB(24, 24, 32) }, 0.15)
+        self:Tween(gearStroke, { Color = Color3.fromRGB(36, 36, 48) }, 0.15)
+        self:Tween(gearIcon, { ImageColor3 = Color3.fromRGB(160, 165, 180) }, 0.15)
+    end)
+    gearBtn.MouseButton1Click:Connect(function()
+        self:PlayUISound()
+        if gearCallback then gearCallback(gearBtn) end
+    end)
+
+    local switch = Instance.new("TextButton")
+    switch.Size = UDim2.new(0, 36, 0, 18)
+    switch.Position = UDim2.new(1, -44, 0.5, -9)
+    switch.BackgroundColor3 = defaultState and self.Theme.Accent or Color3.fromRGB(34, 34, 44)
+    switch.Text = ""
+    switch.AutoButtonColor = false
+    switch.Parent = row
+    self:Corner(switch, 10)
+
+    local circle = Instance.new("Frame")
+    circle.Size = UDim2.new(0, 14, 0, 14)
+    circle.Position = defaultState and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+    circle.BackgroundColor3 = defaultState and (self.Theme.SwitchKnob or Color3.fromRGB(20, 20, 26)) or Color3.fromRGB(180, 180, 195)
+    circle.Parent = switch
+    self:Corner(circle, 7)
+
+    local state = defaultState
+    local function setVisual(s, fireCallback)
+        state = s
+        if regKey then self.Config.Toggles[regKey] = s end
+        local targetColor = s and self.Theme.Accent or Color3.fromRGB(34, 34, 44)
+        local targetPos = s and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+        local knobColor = s and (self.Theme.SwitchKnob or Color3.fromRGB(20, 20, 26)) or Color3.fromRGB(180, 180, 195)
+        local textColor = s and self.Theme.TextPrimary or self.Theme.TextDim
+        self:Tween(switch, { BackgroundColor3 = targetColor }, 0.2)
+        self:Tween(circle, { Position = targetPos, BackgroundColor3 = knobColor }, 0.2)
+        self:Tween(lbl, { TextColor3 = textColor }, 0.2)
+        if fireCallback and callback then callback(state) end
+    end
+
+    switch.MouseButton1Click:Connect(function()
+        self:PlayUISound()
+        setVisual(not state, true)
+    end)
+
+    return row, setVisual
+end
+
+function Hub:CloseAntiModal()
+    if self.State.AntiModalBackdrop then
+        pcall(function() self.State.AntiModalBackdrop:Destroy() end)
+        self.State.AntiModalBackdrop = nil
+    end
+    if self.State.AntiModal then
+        local popup = self.State.AntiModal
+        self.State.AntiModal = nil
+        local tw = self:Tween(popup, { Position = UDim2.new(popup.Position.X.Scale, popup.Position.X.Offset, popup.Position.Y.Scale, popup.Position.Y.Offset - 6), BackgroundTransparency = 1 }, 0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        tw.Completed:Connect(function()
+            pcall(function() popup:Destroy() end)
+        end)
+    end
+end
+
+function Hub:OpenAntiModal(anchorObj)
+    self:CloseAntiModal()
+    local screen = self.State.Gui
+    if not screen then return end
+
+    local backdrop = Instance.new("TextButton")
+    backdrop.Name = "AntiModalBackdrop"
+    backdrop.Size = UDim2.new(1, 0, 1, 0)
+    backdrop.Position = UDim2.new(0, 0, 0, 0)
+    backdrop.BackgroundTransparency = 1
+    backdrop.Text = ""
+    backdrop.AutoButtonColor = false
+    backdrop.ZIndex = 90
+    backdrop.Parent = screen
+    self.State.AntiModalBackdrop = backdrop
+
+    backdrop.MouseButton1Click:Connect(function()
+        self:PlayUISound()
+        self:CloseAntiModal()
+    end)
+
+    -- Floating Modal Frame (Identical to KeybindSettingsPopup: 156px width, sleek black/white theme)
+    local popup = Instance.new("Frame")
+    popup.Name = "AntiSettingsPopup"
+    popup.Size = UDim2.new(0, 156, 0, 148)
+    popup.BackgroundColor3 = Color3.fromRGB(16, 17, 22)
+    popup.BorderSizePixel = 0
+    popup.ZIndex = 100
+    popup.Parent = screen
+    self.State.AntiModal = popup
+
+    self:Corner(popup, 8)
+    self:Stroke(popup, Color3.fromRGB(38, 42, 54), 1)
+
+    -- Header (height 26px)
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, 0, 0, 26)
+    header.BackgroundTransparency = 1
+    header.ZIndex = 101
+    header.Parent = popup
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Position = UDim2.new(0, 8, 0, 0)
+    titleLbl.Size = UDim2.new(1, -32, 1, 0)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.Text = "Anti Settings"
+    titleLbl.TextColor3 = Color3.fromRGB(245, 245, 255)
+    titleLbl.TextSize = 10
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.ZIndex = 102
+    titleLbl.Parent = header
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 16, 0, 16)
+    closeBtn.Position = UDim2.new(1, -20, 0.5, -8)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(24, 25, 32)
+    closeBtn.Text = "×"
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextColor3 = Color3.fromRGB(180, 185, 200)
+    closeBtn.TextSize = 12
+    closeBtn.AutoButtonColor = false
+    closeBtn.ZIndex = 102
+    closeBtn.Parent = header
+    self:Corner(closeBtn, 4)
+    local closeStroke = self:Stroke(closeBtn, Color3.fromRGB(38, 40, 52), 1)
+
+    closeBtn.MouseEnter:Connect(function()
+        self:Tween(closeBtn, { BackgroundColor3 = Color3.fromRGB(34, 36, 46) }, 0.15)
+        self:Tween(closeStroke, { Color = Color3.fromRGB(60, 65, 85) }, 0.15)
+        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        self:Tween(closeBtn, { BackgroundColor3 = Color3.fromRGB(24, 25, 32) }, 0.15)
+        self:Tween(closeStroke, { Color = Color3.fromRGB(38, 40, 52) }, 0.15)
+        closeBtn.TextColor3 = Color3.fromRGB(180, 185, 200)
+    end)
+    closeBtn.MouseButton1Click:Connect(function()
+        self:PlayUISound()
+        self:CloseAntiModal()
+    end)
+
+    local div = Instance.new("Frame")
+    div.Size = UDim2.new(1, -16, 0, 1)
+    div.Position = UDim2.new(0, 8, 1, -1)
+    div.BackgroundColor3 = Color3.fromRGB(26, 28, 38)
+    div.BorderSizePixel = 0
+    div.ZIndex = 101
+    div.Parent = header
+
+    -- Body Container
+    local body = Instance.new("Frame")
+    body.Position = UDim2.new(0, 7, 0, 30)
+    body.Size = UDim2.new(1, -14, 1, -34)
+    body.BackgroundTransparency = 1
+    body.ZIndex = 101
+    body.Parent = popup
+
+    local bodyLayout = Instance.new("UIListLayout")
+    bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    bodyLayout.Padding = UDim.new(0, 4)
+    bodyLayout.Parent = body
+
+    local antiFeatures = {
+        { Title = "Anti-AFK", Key = "AntiAFK", Def = self.Config.Toggles.AntiAFK ~= false },
+        { Title = "Anti-Lag", Key = "PotatoOptimizer", Def = self.Config.Toggles.PotatoOptimizer == true },
+        { Title = "Anti-Lag Ultra", Key = "AntiLagUltra", Def = self.Config.Toggles.AntiLagUltra == true },
+        { Title = "Anti-Fling", Key = "AntiFling", Def = self.Config.Toggles.AntiFling ~= false },
+    }
+
+    for idx, feat in ipairs(antiFeatures) do
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 24)
+        row.BackgroundColor3 = Color3.fromRGB(20, 21, 28)
+        row.LayoutOrder = idx
+        row.ZIndex = 102
+        row.Parent = body
+        self:Corner(row, 4)
+        self:Stroke(row, Color3.fromRGB(32, 34, 44), 1)
+
+        local tLbl = Instance.new("TextLabel")
+        tLbl.Position = UDim2.new(0, 8, 0, 0)
+        tLbl.Size = UDim2.new(1, -44, 1, 0)
+        tLbl.BackgroundTransparency = 1
+        tLbl.Font = Enum.Font.GothamMedium
+        tLbl.Text = feat.Title
+        tLbl.TextColor3 = feat.Def and Color3.fromRGB(245, 245, 255) or Color3.fromRGB(150, 155, 170)
+        tLbl.TextSize = 10
+        tLbl.TextXAlignment = Enum.TextXAlignment.Left
+        tLbl.ZIndex = 103
+        tLbl.Parent = row
+
+        -- Switch in exact Hub theme style: Accent (White) when on, Dark when off!
+        local swBtn = Instance.new("TextButton")
+        swBtn.Size = UDim2.new(0, 28, 0, 14)
+        swBtn.Position = UDim2.new(1, -34, 0.5, -7)
+        swBtn.BackgroundColor3 = feat.Def and (self.Theme.Accent or Color3.fromRGB(255, 255, 255)) or Color3.fromRGB(34, 34, 44)
+        swBtn.Text = ""
+        swBtn.AutoButtonColor = false
+        swBtn.ZIndex = 103
+        swBtn.Parent = row
+        self:Corner(swBtn, 7)
+
+        local dot = Instance.new("Frame")
+        dot.Size = UDim2.new(0, 10, 0, 10)
+        dot.Position = feat.Def and UDim2.new(1, -12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5)
+        dot.BackgroundColor3 = feat.Def and Color3.fromRGB(20, 22, 30) or Color3.fromRGB(210, 215, 225)
+        dot.ZIndex = 104
+        dot.Parent = swBtn
+        self:Corner(dot, 5)
+
+        local curState = feat.Def
+        swBtn.MouseButton1Click:Connect(function()
+            self:PlayUISound()
+            curState = not curState
+            self.Config.Toggles[feat.Key] = curState
+            local targetCol = curState and (self.Theme.Accent or Color3.fromRGB(255, 255, 255)) or Color3.fromRGB(34, 34, 44)
+            local targetPos = curState and UDim2.new(1, -12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5)
+            local knobCol = curState and Color3.fromRGB(20, 22, 30) or Color3.fromRGB(210, 215, 225)
+            local textCol = curState and Color3.fromRGB(245, 245, 255) or Color3.fromRGB(150, 155, 170)
+            self:Tween(swBtn, { BackgroundColor3 = targetCol }, 0.18)
+            self:Tween(dot, { Position = targetPos, BackgroundColor3 = knobCol }, 0.18)
+            self:Tween(tLbl, { TextColor3 = textCol }, 0.18)
+
+            if self.Config.Toggles.AntiSystem then
+                if feat.Key == "PotatoOptimizer" and self.ApplyPotatoOptimizer then
+                    self:ApplyPotatoOptimizer(curState)
+                elseif feat.Key == "AntiLagUltra" and self.ApplyAntiLagUltra then
+                    self:ApplyAntiLagUltra(curState)
+                end
+            end
+        end)
+    end
+
+    -- Positioning near anchorObj exactly like KeybindSettingsPopup
+    local anchorPos = (typeof(anchorObj) == "Instance" and anchorObj:IsA("GuiObject") and anchorObj.AbsolutePosition) or (typeof(anchorObj) == "Vector2" and anchorObj) or Vector2.new(300, 200)
+    local anchorSize = (typeof(anchorObj) == "Instance" and anchorObj:IsA("GuiObject") and anchorObj.AbsoluteSize) or Vector2.new(20, 20)
+    local vpSize = self.Services.Workspace.CurrentCamera and self.Services.Workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+
+    local targetX = anchorPos.X - 162
+    if targetX < 12 then
+        targetX = anchorPos.X + anchorSize.X + 6
+    end
+    local targetY = math.clamp(anchorPos.Y - 10, 12, math.max(12, vpSize.Y - 160))
+
+    -- Crisp Slide-In Animation (identical to KeybindPopup)
+    popup.Position = UDim2.new(0, targetX, 0, targetY - 6)
+    popup.BackgroundTransparency = 1
+    self:Tween(popup, { Position = UDim2.new(0, targetX, 0, targetY), BackgroundTransparency = 0 }, 0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+end
+
+function Hub:SetupFly()
+    local rs = self.Services.RunService
+    local lp = self.Services.Players.LocalPlayer
+    local uis = self.Services.UserInputService
+
+    rs.RenderStepped:Connect(function()
+        if not self.Config.Toggles.Fly then
+            if self._flying then
+                self._flying = false
+                local char = lp.Character
+                local hrp = char and self:GetRoot(char)
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                if hrp then
+                    local bv = hrp:FindFirstChild("HubFlyBV")
+                    if bv then bv:Destroy() end
+                    local bg = hrp:FindFirstChild("HubFlyBG")
+                    if bg then bg:Destroy() end
+                end
+                if hum then
+                    hum.PlatformStand = false
+                end
+            end
+            return
+        end
+
+        local char = lp.Character
+        local hrp = char and self:GetRoot(char)
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not (hrp and hum and hum.Health > 0) then return end
+
+        self._flying = true
+        hum.PlatformStand = true
+
+        local cam = self.Services.Workspace.CurrentCamera
+        local speedVal = tonumber(self.Config.Values.FlySpeed) or 5
+        local speed = speedVal * 18
+
+        local bv = hrp:FindFirstChild("HubFlyBV")
+        if not bv then
+            bv = Instance.new("BodyVelocity")
+            bv.Name = "HubFlyBV"
+            bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+            bv.Velocity = Vector3.zero
+            bv.Parent = hrp
+        end
+
+        local bg = hrp:FindFirstChild("HubFlyBG")
+        if not bg then
+            bg = Instance.new("BodyGyro")
+            bg.Name = "HubFlyBG"
+            bg.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+            bg.P = 10000
+            bg.CFrame = hrp.CFrame
+            bg.Parent = hrp
+        end
+
+        bg.CFrame = cam.CFrame
+
+        local moveDir = Vector3.zero
+        if uis:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+        if uis:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+        if uis:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+        if uis:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+        if uis:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+        if uis:IsKeyDown(Enum.KeyCode.LeftShift) or uis:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+
+        if moveDir.Magnitude > 0 then
+            bv.Velocity = moveDir.Unit * speed
+        else
+            bv.Velocity = Vector3.zero
+        end
+    end)
+end
+
+function Hub:ApplyAntiLagUltra(enabled)
+    local parentTarget = self:GetSafeParent()
+    if enabled then
+        local ultraGui = parentTarget:FindFirstChild("DynamicHub_UltraBlackScreen")
+        if not ultraGui then
+            ultraGui = Instance.new("ScreenGui")
+            ultraGui.Name = "DynamicHub_UltraBlackScreen"
+            ultraGui.ResetOnSpawn = false
+            ultraGui.IgnoreGuiInset = true
+            ultraGui.DisplayOrder = 1
+            ultraGui.Parent = parentTarget
+            self.State.AntiLagUltraGui = ultraGui
+
+            local bg = Instance.new("Frame")
+            bg.Name = "BlackBackground"
+            bg.Size = UDim2.new(1, 0, 1, 0)
+            bg.Position = UDim2.new(0, 0, 0, 0)
+            bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            bg.BorderSizePixel = 0
+            bg.Parent = ultraGui
+
+            local centerBox = Instance.new("Frame")
+            centerBox.Name = "CenterBox"
+            centerBox.Size = UDim2.new(0, 300, 0, 130)
+            centerBox.AnchorPoint = Vector2.new(0.5, 0.5)
+            centerBox.Position = UDim2.new(0.5, 0, 0.5, 0)
+            centerBox.BackgroundTransparency = 1
+            centerBox.Parent = bg
+
+            local centerLayout = Instance.new("UIListLayout")
+            centerLayout.FillDirection = Enum.FillDirection.Vertical
+            centerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            centerLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+            centerLayout.Padding = UDim.new(0, 8)
+            centerLayout.Parent = centerBox
+
+            local logo = Instance.new("ImageLabel")
+            logo.Name = "Logo"
+            logo.Size = UDim2.new(0, 60, 0, 60)
+            logo.BackgroundTransparency = 1
+            logo.Image = self:GetLogoAsset()
+            logo.ScaleType = Enum.ScaleType.Fit
+            logo.Parent = centerBox
+
+            local title = Instance.new("TextLabel")
+            title.Name = "Title"
+            title.Size = UDim2.new(1, 0, 0, 26)
+            title.BackgroundTransparency = 1
+            title.Font = Enum.Font.GothamBold
+            title.Text = "DYNAMIC HUB"
+            title.TextColor3 = Color3.fromRGB(245, 245, 255)
+            title.TextSize = 20
+            title.Parent = centerBox
+
+            local sub = Instance.new("TextLabel")
+            sub.Name = "SubTitle"
+            sub.Size = UDim2.new(1, 0, 0, 16)
+            sub.BackgroundTransparency = 1
+            sub.Font = Enum.Font.GothamMedium
+            sub.Text = "ULTRA ANTI-LAG ACTIVE"
+            sub.TextColor3 = Color3.fromRGB(130, 135, 155)
+            sub.TextSize = 11
+            sub.Parent = centerBox
+        end
+
+        ultraGui.Enabled = true
+
+        -- Ensure main Hub GUI and watermark are above black screen:
+        if self.State.Gui then
+            self.State.Gui.DisplayOrder = 10
+        end
+
+        pcall(function() self.Services.RunService:Set3dRenderingEnabled(false) end)
+    else
+        local ultraGui = parentTarget:FindFirstChild("DynamicHub_UltraBlackScreen") or self.State.AntiLagUltraGui
+        if ultraGui then
+            ultraGui.Enabled = false
+        end
+        pcall(function() self.Services.RunService:Set3dRenderingEnabled(true) end)
+    end
+end
+
 function Hub:BuildMiscTab(container)
     local leftCol, rightCol = self:CreateDualColumnPage(container)
-    local valSec = self:CreateSection(leftCol, "Supreme Values")
+    local valSec = self:CreateSection(leftCol, "Trade Helper")
     self:CreateToggle(valSec, "Show Values", self.Config.Toggles.ShowSkinValues, function(st)
         self.Config.Toggles.ShowSkinValues = st
         if not st then
@@ -12008,35 +12653,40 @@ function Hub:BuildMiscTab(container)
             end
         end
     end)
+    self:CreateToggle(moveSec, "Fly", self.Config.Toggles.Fly, function(v)
+        self.Config.Toggles.Fly = v
+    end, "Fly")
+    self:CreateSlider(moveSec, "Fly Speed", 1, 10, self.Config.Values.FlySpeed or 5, "x", function(v)
+        self.Config.Values.FlySpeed = v
+    end)
     self:CreateToggle(moveSec, "Walk Fling", self.Config.Toggles.WalkFling, function(v)
         self.Config.Toggles.WalkFling = v
     end)
+
     local utilSec = self:CreateSection(rightCol, "Utilities")
-    self:CreateToggle(utilSec, "Anti-AFK (Anti-Kick)", self.Config.Toggles.AntiAFK, function(v)
-        self.Config.Toggles.AntiAFK = v
-    end, "AntiAFK")
+    self:CreateToggle(utilSec, "Anti", self.Config.Toggles.AntiSystem, function(v)
+        self.Config.Toggles.AntiSystem = v
+        if v then
+            if self.Config.Toggles.PotatoOptimizer and self.ApplyPotatoOptimizer then
+                self:ApplyPotatoOptimizer(true)
+            end
+            if self.Config.Toggles.AntiLagUltra and self.ApplyAntiLagUltra then
+                self:ApplyAntiLagUltra(true)
+            end
+        else
+            if self.ApplyAntiLagUltra then
+                self:ApplyAntiLagUltra(false)
+            end
+            if self.ApplyPotatoOptimizer then
+                self:ApplyPotatoOptimizer(false)
+            end
+        end
+    end, "AntiSystem", true, function(anchor)
+        self:OpenAntiModal(anchor)
+    end)
     self:CreateToggle(utilSec, "Auto Rejoin on Kick", self.Config.Toggles.AutoRejoin, function(v)
         self.Config.Toggles.AutoRejoin = v
     end, "AutoRejoin")
-    self:CreateToggle(utilSec, "Anti-Lag", self.Config.Toggles.PotatoOptimizer, function(v)
-        self.Config.Toggles.PotatoOptimizer = v
-        self:ApplyPotatoOptimizer(v)
-    end)
-    self:CreateToggle(utilSec, "Anti-Fling", self.Config.Toggles.AntiFling, function(v)
-        self.Config.Toggles.AntiFling = v
-        if v and (not self.Config.Toggles.WalkFling) then
-            local lp = self.Services.Players.LocalPlayer
-            for _, p in ipairs(self.Services.Players:GetPlayers()) do
-                if p ~= lp and p.Character then
-                    for _, part in ipairs(p.Character:GetDescendants()) do
-                        if part:IsA("BasePart") and part.CanCollide then
-                            part.CanCollide = false
-                        end
-                    end
-                end
-            end
-        end
-    end)
 
     local extraSec = self:CreateSection(rightCol, "Extra Actions")
     self:CreateButton(extraSec, "Teleport to Lobby", function()
@@ -12105,16 +12755,22 @@ function Hub:BuildSkinsTab(container)
     scroll.BorderSizePixel = 0
     scroll.ScrollBarThickness = 3
     scroll.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 75)
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.Parent = container
 
     local grid = Instance.new("UIGridLayout")
     grid.SortOrder = Enum.SortOrder.LayoutOrder
+    grid.CellSize = UDim2.new(0, 85, 0, 105)
+    grid.CellPadding = UDim2.new(0, 8, 0, 8)
     grid.Parent = scroll
 
     -- Dynamically calculate CellSize so 5 columns fill 100% of the available width with ZERO blank right gap
     local function updateGrid()
         local w = scroll.AbsoluteSize.X
-        if w < 100 then return end
+        if w < 100 then
+            w = (container and container.AbsoluteSize.X > 100 and container.AbsoluteSize.X) or 480
+        end
         local pad = 8
         local cols = 5
         if w < 480 then cols = 4 end
@@ -12125,6 +12781,18 @@ function Hub:BuildSkinsTab(container)
         grid.CellPadding = UDim2.new(0, pad, 0, pad)
     end
     scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateGrid)
+    grid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        if grid.AbsoluteContentSize.Y > 0 then
+            scroll.CanvasSize = UDim2.new(0, 0, 0, grid.AbsoluteContentSize.Y + 20)
+        end
+    end)
+    container:GetPropertyChangedSignal("Visible"):Connect(function()
+        if container.Visible then
+            task.defer(function()
+                updateGrid()
+            end)
+        end
+    end)
     task.defer(updateGrid)
 
     local function updateTabButtons()
@@ -12204,7 +12872,14 @@ function Hub:BuildSkinsTab(container)
             end
         end
         updateGrid()
-        scroll.CanvasSize = UDim2.new(0, 0, 0, grid.AbsoluteContentSize.Y + 16)
+        if grid.AbsoluteContentSize.Y > 0 then
+            scroll.CanvasSize = UDim2.new(0, 0, 0, grid.AbsoluteContentSize.Y + 20)
+        end
+    end
+
+    self.SkinSystem.RefreshUI = function()
+        updateGrid()
+        refreshGrid()
     end
 
     btnGun.MouseButton1Click:Connect(function()
@@ -12221,7 +12896,8 @@ function Hub:BuildSkinsTab(container)
         refreshGrid()
     end)
     task.spawn(function()
-        while not self.SkinSystem.Loaded do task.wait(0.5) end
+        while not self.SkinSystem.Loaded do task.wait(0.2) end
+        updateGrid()
         refreshGrid()
     end)
 end
