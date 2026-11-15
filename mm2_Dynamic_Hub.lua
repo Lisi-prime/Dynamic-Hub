@@ -15033,9 +15033,16 @@ function Hub:BuildSkinsTab(container)
             ["ф"]="f",["х"]="h",["ц"]="ts",["ч"]="ch",["ш"]="sh",["щ"]="sch",
             ["ъ"]="",["ы"]="y",["ь"]="",["э"]="e",["ю"]="yu",["я"]="ya"
         }
-        local translit = filter:gsub("[%z-W94-¤][
-8-91]*", function(c)
-            return ruMap[c] or c
+        local translit = filter
+        pcall(function()
+            if utf8 and utf8.codes then
+                local t = ""
+                for _, code in utf8.codes(filter) do
+                    local ch = utf8.char(code)
+                    t = t .. (ruMap[ch] or ch)
+                end
+                translit = t
+            end
         end)
 
         for idx, rec in ipairs(list) do
