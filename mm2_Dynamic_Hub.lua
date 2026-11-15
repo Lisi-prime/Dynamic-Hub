@@ -14865,43 +14865,30 @@ function Hub:BuildMiscTab(container)
 end
 Hub.BuildFunTab = Hub.BuildMiscTab
 function Hub:BuildSkinsTab(container)
-    local curSlot = "All"
+    local curSlot = "Gun"
     local topRow = Instance.new("Frame")
     topRow.Size = UDim2.new(1, 0, 0, 32)
     topRow.BackgroundTransparency = 1
     topRow.Parent = container
 
-    -- Category filter buttons: All, Gun, Knife with live counters
-    local btnAll = Instance.new("TextButton")
-    btnAll.Name = "Btn_All"
-    btnAll.Position = UDim2.new(0, 0, 0, 0)
-    btnAll.Size = UDim2.new(0, 70, 1, 0)
-    btnAll.BackgroundColor3 = Color3.fromRGB(32, 28, 48)
-    btnAll.Font = Enum.Font.GothamBold
-    btnAll.Text = "All"
-    btnAll.TextColor3 = Color3.fromRGB(240, 240, 255)
-    btnAll.TextSize = 11
-    btnAll.Parent = topRow
-    self:Corner(btnAll, 6)
-    local strokeAll = self:Stroke(btnAll, self.Theme.Accent, 1.5)
-
+    -- Category filter buttons: Gun, Knife with live counters (All removed)
     local btnGun = Instance.new("TextButton")
     btnGun.Name = "Btn_Gun"
-    btnGun.Position = UDim2.new(0, 76, 0, 0)
-    btnGun.Size = UDim2.new(0, 78, 1, 0)
-    btnGun.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+    btnGun.Position = UDim2.new(0, 0, 0, 0)
+    btnGun.Size = UDim2.new(0, 85, 1, 0)
+    btnGun.BackgroundColor3 = Color3.fromRGB(32, 28, 48)
     btnGun.Font = Enum.Font.GothamBold
     btnGun.Text = "Gun"
-    btnGun.TextColor3 = Color3.fromRGB(140, 140, 155)
+    btnGun.TextColor3 = Color3.fromRGB(240, 240, 255)
     btnGun.TextSize = 11
     btnGun.Parent = topRow
     self:Corner(btnGun, 6)
-    local strokeGun = self:Stroke(btnGun, Color3.fromRGB(30, 30, 42), 1)
+    local strokeGun = self:Stroke(btnGun, self.Theme.Accent, 1.5)
 
     local btnKnife = Instance.new("TextButton")
     btnKnife.Name = "Btn_Knife"
-    btnKnife.Position = UDim2.new(0, 160, 0, 0)
-    btnKnife.Size = UDim2.new(0, 78, 1, 0)
+    btnKnife.Position = UDim2.new(0, 92, 0, 0)
+    btnKnife.Size = UDim2.new(0, 85, 1, 0)
     btnKnife.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
     btnKnife.Font = Enum.Font.GothamBold
     btnKnife.Text = "Knife"
@@ -14986,9 +14973,7 @@ function Hub:BuildSkinsTab(container)
     local function updateTabButtons()
         local gunsCount = (self.SkinSystem.BySlot and self.SkinSystem.BySlot.Gun and #self.SkinSystem.BySlot.Gun) or 0
         local knivesCount = (self.SkinSystem.BySlot and self.SkinSystem.BySlot.Knife and #self.SkinSystem.BySlot.Knife) or 0
-        local totalCount = gunsCount + knivesCount
 
-        btnAll.Text = "All (" .. tostring(totalCount) .. ")"
         btnGun.Text = "Gun (" .. tostring(gunsCount) .. ")"
         btnKnife.Text = "Knife (" .. tostring(knivesCount) .. ")"
 
@@ -15006,7 +14991,6 @@ function Hub:BuildSkinsTab(container)
             end
         end
 
-        setBtnStyle(btnAll, strokeAll, curSlot == "All")
         setBtnStyle(btnGun, strokeGun, curSlot == "Gun")
         setBtnStyle(btnKnife, strokeKnife, curSlot == "Knife")
     end
@@ -15016,23 +15000,9 @@ function Hub:BuildSkinsTab(container)
             if ch:IsA("GuiObject") then ch:Destroy() end
         end
         local list = {}
-        if curSlot == "All" then
-            local seen = {}
-            for _, s in ipairs({ "Gun", "Knife" }) do
-                local sub = (self.SkinSystem.BySlot and self.SkinSystem.BySlot[s]) or {}
-                for _, r in ipairs(sub) do
-                    local sig = r.sig or r.name
-                    if not seen[sig] then
-                        seen[sig] = true
-                        list[#list + 1] = r
-                    end
-                end
-            end
-        else
-            local sub = (self.SkinSystem.BySlot and self.SkinSystem.BySlot[curSlot]) or {}
-            for _, r in ipairs(sub) do
-                list[#list + 1] = r
-            end
+        local sub = (self.SkinSystem.BySlot and self.SkinSystem.BySlot[curSlot]) or {}
+        for _, r in ipairs(sub) do
+            list[#list + 1] = r
         end
 
         -- Alphabetical sorting by display name
@@ -15217,15 +15187,11 @@ function Hub:BuildSkinsTab(container)
     end
 
     self.SkinSystem.RefreshUI = function()
+        updateTabButtons()
         updateGrid()
         refreshGrid()
     end
 
-    btnAll.MouseButton1Click:Connect(function()
-        curSlot = "All"
-        updateTabButtons()
-        refreshGrid()
-    end)
     btnGun.MouseButton1Click:Connect(function()
         curSlot = "Gun"
         updateTabButtons()
