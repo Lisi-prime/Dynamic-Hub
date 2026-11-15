@@ -70,6 +70,9 @@ local Hub = {
             ESPGun = false,
             OnlyImportantRoles = false,
             ChinaHat = false,
+            Aura = false,
+            CustomSky = false,
+            Shaders = false,
             JumpCircles = false,
         PreviewRotate = true,
             PreviewAura = false,
@@ -110,6 +113,9 @@ local Hub = {
             AntiStuckLoading = false,
             UISounds = false,
             KeybindsHUD = false,
+            BorderLight = true,
+            TabAnimations = true,
+            IntroShowName = true,
         },
         Values = {
             PredictionPercent = 50,
@@ -142,6 +148,14 @@ local Hub = {
             UISoundChoice = "Bubble Pop",
             UISoundId = "6895079853",
             UISoundVolume = 100,
+            WindowEffect = "Snow + Grid",
+            IntroStyle = "Classic",
+            IntroSpeed = 100,
+            ChinaHatColor = Color3.fromRGB(255, 255, 255),
+            AuraType = "angel",
+            AuraColor = Color3.fromRGB(133, 220, 255),
+            SkyboxPreset = "Jungle",
+            ShaderPreset = "morning",
         }
     },
     Controls = {
@@ -243,6 +257,315 @@ local Hub = {
         Dragging = false,
         LastMouse = Vector2.new(0, 0),
         AuraEmitter = nil,
+    },
+    ChinaHat = {
+        Radius = 1.55,
+        Height = 0.82,
+        Drop = 0.02,
+        Segments = 48,
+        Tau = math.pi * 2,
+        Alpha = 0.72,
+        MaxRows = 220,
+        Eps = 0.75,
+        Rows = {},
+        Px = table.create(49),
+        Py = table.create(49),
+        Cos = table.create(48),
+        Sin = table.create(48),
+        Ord = table.create(49),
+        Stack = table.create(50),
+        Shown = {},
+        CPos = {},
+        CSize = {},
+        CCol = {},
+        White = Color3.new(1, 1, 1),
+        Black = Color3.new(0, 0, 0),
+        Head = nil,
+        Pos = nil,
+        CF = nil,
+        Fov = nil,
+        Vx = nil,
+        Vy = nil,
+        Col = nil
+    },
+    Aura = {
+        Ids = {
+            ["angel"] = "97658130917593",
+            ["starlight"] = "134645216613107",
+            ["heavenly"] = "139300897520961",
+            ["ribbon"] = "132069507632161",
+            ["sakura"] = "81755778619404",
+            ["wind"] = "80694081850877",
+            ["flow"] = "119913533725648",
+            ["star"] = "73754563740680"
+        },
+        Presets = { "angel", "starlight", "heavenly", "ribbon", "sakura", "wind", "flow", "star" },
+        Cache = {},
+        Particles = {},
+        Host = nil,
+        Groups = {
+            head = { "Head" },
+            torso = { "Torso", "UpperTorso", "LowerTorso", "HumanoidRootPart", "Root" },
+            larm = { "Left Arm", "LeftUpperArm", "LeftLowerArm", "LeftHand" },
+            rarm = { "Right Arm", "RightUpperArm", "RightLowerArm", "RightHand" },
+            lleg = { "Left Leg", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot" },
+            rleg = { "Right Leg", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+        },
+        GroupOf = {}
+    },
+    Sky = {
+        Skyboxes = {
+            ["Jungle"] = {
+                SkyboxBk = "http://www.roblox.com/asset/?id=214399891",
+                SkyboxDn = "http://www.roblox.com/asset/?id=214399887",
+                SkyboxFt = "http://www.roblox.com/asset/?id=214399894",
+                SkyboxLf = "http://www.roblox.com/asset/?id=214405668",
+                SkyboxRt = "http://www.roblox.com/asset/?id=214399899",
+                SkyboxUp = "http://www.roblox.com/asset/?id=214399889"
+            },
+            ["Blossom"] = {
+                SkyboxBk = "http://www.roblox.com/asset/?id=271042516",
+                SkyboxDn = "http://www.roblox.com/asset/?id=271077243",
+                SkyboxFt = "http://www.roblox.com/asset/?id=271042556",
+                SkyboxLf = "http://www.roblox.com/asset/?id=271042310",
+                SkyboxRt = "http://www.roblox.com/asset/?id=271042467",
+                SkyboxUp = "http://www.roblox.com/asset/?id=271077958"
+            },
+            ["Red night"] = {
+                SkyboxBk = "http://www.roblox.com/Asset/?ID=401664839",
+                SkyboxDn = "http://www.roblox.com/Asset/?ID=401664862",
+                SkyboxFt = "http://www.roblox.com/Asset/?ID=401664960",
+                SkyboxLf = "http://www.roblox.com/Asset/?ID=401664881",
+                SkyboxRt = "http://www.roblox.com/Asset/?ID=401664901",
+                SkyboxUp = "http://www.roblox.com/Asset/?ID=401664936"
+            },
+            ["Purple"] = {
+                SkyboxBk = "http://www.roblox.com/asset/?id=13694952867",
+                SkyboxDn = "http://www.roblox.com/asset/?id=13694968325",
+                SkyboxFt = "http://www.roblox.com/asset/?id=13694980654",
+                SkyboxLf = "http://www.roblox.com/asset/?id=13694998113",
+                SkyboxRt = "http://www.roblox.com/asset/?id=13695002700",
+                SkyboxUp = "http://www.roblox.com/asset/?id=13695007103"
+            },
+            ["Foggy"] = {
+                SkyboxBk = "rbxassetid://1370717244",
+                SkyboxDn = "rbxassetid://1370717336",
+                SkyboxFt = "rbxassetid://1370717438",
+                SkyboxLf = "rbxassetid://1370717567",
+                SkyboxRt = "rbxassetid://1370717698",
+                SkyboxUp = "rbxassetid://1370717782"
+            }
+        },
+        Assets = {
+            ["Galaxy"] = 15983996673,
+            ["Anime"] = 13107361022,
+            ["Minecraft"] = 2758029221
+        },
+        Presets = { "Purple", "Red night", "Blossom", "Jungle", "Foggy", "Galaxy", "Anime", "Minecraft" },
+        CreatedSky = nil,
+        OriginalSky = nil,
+        OriginalSkyParent = nil
+    },
+    Shaders = {
+        Enabled = false,
+        CurrentType = "morning",
+        Connection = nil,
+        OriginalEffects = {},
+        CreatedEffects = {},
+        BloomEffect = nil,
+        BlurEffect = nil,
+        ColorCorEffect = nil,
+        DepthEffect = nil,
+        AtmosphereEffect = nil,
+        CloudEffect = nil,
+        OriginalLightingSaved = false,
+        OriginalLighting = {},
+        Presets = {
+            morning = {
+                Ambient = Color3.fromRGB(10, 10, 10),
+                Brightness = 1.5,
+                ClockTime = 7.5,
+                ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
+                ColorShift_Top = Color3.fromRGB(200, 200, 200),
+                EnvironmentDiffuseScale = 0.1,
+                EnvironmentSpecularScale = 0.1,
+                OutdoorAmbient = Color3.fromRGB(10, 10, 10),
+                GeographicLatitude = 44,
+                ExposureCompensation = 0.3,
+                GlobalShadows = true,
+                ColorCorrection = {
+                    Brightness = -0.02,
+                    Contrast = 0.8,
+                    Saturation = -0.5,
+                    TintColor = Color3.fromRGB(100, 150, 200)
+                },
+                Bloom = {
+                    Intensity = 0.2,
+                    Size = 5,
+                    Threshold = 0.8
+                },
+                Blur = {
+                    Size = 2
+                },
+                DepthOfField = {
+                    FarIntensity = 0.5,
+                    FocusDistance = 15,
+                    InFocusRadius = 5,
+                    NearIntensity = 0.5
+                },
+                Atmosphere = {
+                    Density = 0.2,
+                    Offset = 0.5,
+                    Color = Color3.fromRGB(70, 120, 170),
+                    Decay = Color3.fromRGB(10, 50, 100),
+                    Glare = 0.3,
+                    Haze = 1
+                },
+                Clouds = {
+                    Cover = 0.6,
+                    Density = 0.36,
+                    Color = Color3.fromRGB(255, 255, 255)
+                }
+            },
+            midday = {
+                Ambient = Color3.fromRGB(2, 2, 2),
+                Brightness = 3.25,
+                ClockTime = 8,
+                ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
+                ColorShift_Top = Color3.fromRGB(255, 247, 237),
+                EnvironmentDiffuseScale = 0.203,
+                EnvironmentSpecularScale = 0.255,
+                OutdoorAmbient = Color3.fromRGB(51, 54, 67),
+                GeographicLatitude = -15.12,
+                ExposureCompensation = 0.85,
+                GlobalShadows = true,
+                ColorCorrection = {
+                    Brightness = 0.1,
+                    Contrast = 0.5,
+                    Saturation = -0.3,
+                    TintColor = Color3.fromRGB(242, 243, 243)
+                },
+                Bloom = {
+                    Intensity = 0.3,
+                    Size = 10,
+                    Threshold = 0.8
+                },
+                Blur = {
+                    Size = 5
+                },
+                DepthOfField = {
+                    FarIntensity = 0.277,
+                    FocusDistance = 21.54,
+                    InFocusRadius = 16.77,
+                    NearIntensity = 0.277
+                },
+                Atmosphere = {
+                    Density = 0.364,
+                    Offset = 0.556,
+                    Color = Color3.fromRGB(175, 221, 255),
+                    Decay = Color3.fromRGB(13, 105, 172),
+                    Glare = 0.36,
+                    Haze = 0.72
+                },
+                Clouds = {
+                    Cover = 0.75,
+                    Density = 0.26,
+                    Color = Color3.fromRGB(255, 255, 255)
+                }
+            },
+            evening = {
+                Ambient = Color3.fromRGB(2, 2, 2),
+                Brightness = 2.25,
+                ClockTime = 16,
+                ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
+                ColorShift_Top = Color3.fromRGB(255, 247, 237),
+                EnvironmentDiffuseScale = 0.203,
+                EnvironmentSpecularScale = 0.215,
+                OutdoorAmbient = Color3.fromRGB(0, 0, 0),
+                GeographicLatitude = 45,
+                ExposureCompensation = 0.65,
+                GlobalShadows = true,
+                ColorCorrection = {
+                    Brightness = 0.1,
+                    Contrast = 0.5,
+                    Saturation = -0.3,
+                    TintColor = Color3.fromRGB(255, 205, 185)
+                },
+                Bloom = {
+                    Intensity = 0.3234,
+                    Size = 10,
+                    Threshold = 0.813
+                },
+                Blur = {
+                    Size = 5
+                },
+                DepthOfField = {
+                    FarIntensity = 0.217,
+                    FocusDistance = 21.54,
+                    InFocusRadius = 16.77,
+                    NearIntensity = 0.277
+                },
+                Atmosphere = {
+                    Density = 0.364,
+                    Offset = 5.556,
+                    Color = Color3.fromRGB(199, 175, 166),
+                    Decay = Color3.fromRGB(44, 39, 33),
+                    Glare = 0.36,
+                    Haze = 1.72
+                },
+                Clouds = {
+                    Cover = 0.55,
+                    Density = 0.43,
+                    Color = Color3.fromRGB(199, 175, 166)
+                }
+            },
+            night = {
+                Ambient = Color3.fromRGB(33, 33, 33),
+                Brightness = 3.25,
+                ClockTime = 20,
+                ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
+                ColorShift_Top = Color3.fromRGB(255, 247, 237),
+                EnvironmentDiffuseScale = 0.203,
+                EnvironmentSpecularScale = 0.255,
+                OutdoorAmbient = Color3.fromRGB(51, 54, 67),
+                GeographicLatitude = -15,
+                ExposureCompensation = 0.85,
+                GlobalShadows = true,
+                ColorCorrection = {
+                    Brightness = -0.06,
+                    Contrast = -0.02,
+                    Saturation = -0.2,
+                    TintColor = Color3.fromRGB(242, 243, 243)
+                },
+                Bloom = {
+                    Intensity = 0.34,
+                    Size = 10,
+                    Threshold = 0.813
+                },
+                Blur = {
+                    Size = 5
+                },
+                DepthOfField = {
+                    FarIntensity = 0.217,
+                    FocusDistance = 11.54,
+                    InFocusRadius = 16.77,
+                    NearIntensity = 0.277
+                },
+                Atmosphere = {
+                    Density = 0.264,
+                    Offset = 0.156,
+                    Color = Color3.fromRGB(175, 221, 255),
+                    Decay = Color3.fromRGB(13, 105, 172),
+                    Glare = 0.36,
+                    Haze = 1.72
+                },
+                Clouds = {
+                    Cover = 0.65,
+                    Density = 0.33,
+                    Color = Color3.fromRGB(255, 255, 255)
+                }
+            }
+        }
     },
     World = {
         Section = nil,
@@ -355,6 +678,19 @@ local Hub = {
         DeathFlingTriggered = false,
     }
 }
+
+for i = 1, Hub.ChinaHat.Segments do
+    local angle = (i - 1) / Hub.ChinaHat.Segments * Hub.ChinaHat.Tau
+    Hub.ChinaHat.Cos[i] = math.cos(angle) * Hub.ChinaHat.Radius
+    Hub.ChinaHat.Sin[i] = math.sin(angle) * Hub.ChinaHat.Radius
+end
+
+for group, names in pairs(Hub.Aura.Groups) do
+    for _, name in ipairs(names) do
+        Hub.Aura.GroupOf[name] = group
+    end
+end
+
 local Icons = {
     Combat = "rbxassetid://10734975692",
     Visuals = "rbxassetid://10723346959",
@@ -4085,6 +4421,9 @@ function Hub:CreateSkinPart(rec)
                     if tid and tid ~= "" and tid ~= "nil" then
                         pcall(function() sa.ColorMap = tostring(tid) end)
                     end
+                    if not rec.isChroma and not (rec.meta and rec.meta.Chroma) then
+                        pcall(function() sa.AlphaMode = Enum.AlphaMode.Transparency end)
+                    end
                 end
                 if hasTexture then
                     part.Color = Color3.new(1, 1, 1)
@@ -4195,9 +4534,13 @@ function Hub:ApplySkinFX(rec, owner, body, handle)
                         inst.Parent = body
                         if node.path then paths[node.path] = inst end
                         self:RegisterSkinGarbage(owner, inst)
+                        sa = inst
                     end
                 else
                     self:ApplySkinProps(sa, node.props)
+                end
+                if sa and not rec.isChroma and not (rec.meta and rec.meta.Chroma) then
+                    pcall(function() sa.AlphaMode = Enum.AlphaMode.Transparency end)
                 end
             else
                 local sm = body:FindFirstChildOfClass("SpecialMesh") or body:FindFirstChildWhichIsA("SpecialMesh", true)
@@ -4587,14 +4930,22 @@ function Hub:GetSkinGripCFrame(rec, slot)
         -- Knives
         if name == "candy" then
             return CFrame.new(0.08, 0.79, 0, 0, 0, 1, -0.04, -1, 0, 1, -0.04, 0)
-        elseif name:find("americasword") or name:find("sword") then
+        elseif name == "americasword" or name == "bloodknife" or name == "shadow" then
             return CFrame.new(0.05, 0.18, 1.25, 1, 0, 0, 0, 0, 1, 0, -1, 0)
+        elseif name:find("beach") then
+            return CFrame.new(0, -0.15, 1.1) * CFrame.Angles(math.rad(80), 0, 0)
         elseif name:find("heartblade") then
             return CFrame.new(0.02, -1.42, 0.02, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-        elseif name:find("axe") or name:find("scythe") or name:find("sickle") or name:find("chopper") then
+        elseif name:find("axe") or name:find("scythe") or name:find("sickle") or name:find("chopper") or name:find("icebreaker") then
             return CFrame.new(0.05, -0.9, 0.35, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        elseif name:find("bat") then
+            return CFrame.new(0, -1.35, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        elseif name:find("sakura") or name:find("evergreen") or name:find("icewing") or name:find("waves") then
+            return CFrame.new(0, -1.3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
         elseif name:find("celestial") or meshId:find("109711282082830") then
             return CFrame.new(0, -0.06, -0.71, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        elseif name:find("sword") then
+            return CFrame.new(0, -1.2, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
         end
         return CFrame.new(0, -1, -0.1, 1, 0, 0, 0, 1, 0, 0, 0, 1)
     end
@@ -4651,6 +5002,10 @@ function Hub:ApplyChromaEffect(rec, body)
         body.Color = rainbowColor
         if sm then
             sm.VertexColor = Vector3.new(rainbowColor.R, rainbowColor.G, rainbowColor.B)
+        end
+        local skinHl = body:FindFirstChild("SkinHighlight")
+        if skinHl then
+            skinHl.OutlineColor = rainbowColor
         end
         for _, d in ipairs(decals) do
             if d and d.Parent then
@@ -4761,6 +5116,16 @@ function Hub:ApplySkinToTool(rec, specificTool)
     body.Massless = true
     body.CFrame = handle.CFrame
 
+    -- Skin Highlight outline (AlwaysOnTop - visible near or behind walls)
+    local skinHl = body:FindFirstChild("SkinHighlight") or Instance.new("Highlight")
+    skinHl.Name = "SkinHighlight"
+    skinHl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    skinHl.FillTransparency = 1
+    skinHl.OutlineTransparency = 0.1
+    skinHl.OutlineColor = self.Theme.Accent or Color3.fromRGB(180, 100, 255)
+    skinHl.Adornee = body
+    skinHl.Parent = body
+
     -- Rigid Weld guarantees instant mathematical attachment with zero physics engine frame lag
     local weld = Instance.new("Weld")
     weld.Name = "SkinRigidWeld"
@@ -4795,7 +5160,11 @@ function Hub:ApplySkinToDisplay(rec)
 
     -- Update attachment on display to orient correctly on waist / back
     local rc = display:FindFirstChildOfClass("RigidConstraint")
-    local dispAtt = (rc and rc.Attachment1) or display:FindFirstChild("CustomAttachment") or display:FindFirstChild("Attachment") or display:FindFirstChildOfClass("Attachment")
+    local dispAtt = (rc and rc.Attachment0 and rc.Attachment0:IsDescendantOf(display) and rc.Attachment0)
+        or (rc and rc.Attachment1 and rc.Attachment1:IsDescendantOf(display) and rc.Attachment1)
+        or display:FindFirstChild("CustomAttachment")
+        or display:FindFirstChild("Attachment")
+        or display:FindFirstChildOfClass("Attachment")
     local isCrossbow = false
     local recName = (rec.name or ""):lower()
     local meshId = ""
@@ -4814,7 +5183,13 @@ function Hub:ApplySkinToDisplay(rec)
 
     if dispAtt then
         local foundAttNode = false
-        if rec.display and rec.display.nodes then
+        if recName:find("beach") then
+            self:BackupSkinProp(dispAtt, { cframe = dispAtt.CFrame })
+            pcall(function()
+                dispAtt.CFrame = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+            end)
+            foundAttNode = true
+        elseif rec.display and rec.display.nodes then
             for _, n in ipairs(rec.display.nodes) do
                 if n.class == "Attachment" and n.props and n.props.CFrame then
                     self:BackupSkinProp(dispAtt, { cframe = dispAtt.CFrame })
@@ -4856,6 +5231,16 @@ function Hub:ApplySkinToDisplay(rec)
     body.CanQuery = false
     body.Massless = true
     body.CFrame = display.CFrame
+
+    -- Skin Highlight outline (AlwaysOnTop - visible near or behind walls)
+    local skinHl = body:FindFirstChild("SkinHighlight") or Instance.new("Highlight")
+    skinHl.Name = "SkinHighlight"
+    skinHl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    skinHl.FillTransparency = 1
+    skinHl.OutlineTransparency = 0.1
+    skinHl.OutlineColor = self.Theme.Accent or Color3.fromRGB(180, 100, 255)
+    skinHl.Adornee = body
+    skinHl.Parent = body
 
     local weld = Instance.new("WeldConstraint")
     weld.Name = "SkinRigidWeld"
@@ -6623,6 +7008,17 @@ function Hub:StartMainLoops()
             pcall(function() self:UpdateChinaHatFrame() end)
         end
     end)
+    local auraSyncAccum = 0
+    local visualHeartbeat = self.Services.RunService.Heartbeat:Connect(function(dt)
+        if self.Config.Toggles.Aura then
+            auraSyncAccum = auraSyncAccum + dt
+            if auraSyncAccum >= 0.3 then
+                auraSyncAccum = 0
+                pcall(function() self:SyncVisualAura() end)
+            end
+        end
+    end)
+    table.insert(self.State.Connections, visualHeartbeat)
     local plRemConn = self.Services.Players.PlayerRemoving:Connect(function(p)
         if self.ESP.Highlights[p] then
             pcall(function() self.ESP.Highlights[p]:Destroy() end)
@@ -6767,7 +7163,7 @@ function Hub:StartMainLoops()
     end)
     local flingTargetTouching = false
 
-    -- Оптимизированный Anti-Fling: Event-driven + 1 сек фоновый скан (без тяжелого перебора 60 раз/сек в Stepped)
+    -- Оптимизированный Anti-Fling / Walk-Fling collision manager
     local function disablePlayerCollisions(char)
         if not char then return end
         for _, part in ipairs(char:GetDescendants()) do
@@ -6777,21 +7173,65 @@ function Hub:StartMainLoops()
         end
     end
 
+    local function applyWalkFlingPlayerCollisions(char)
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if part.Name == "HumanoidRootPart" then
+                    if not part.CanCollide then part.CanCollide = true end
+                else
+                    if part.CanCollide then part.CanCollide = false end
+                end
+            end
+        end
+    end
+
+    local function restorePlayerCollisions(char)
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                local name = part.Name
+                if name == "Head" or name == "Torso" or name == "UpperTorso" or name == "LowerTorso" or name == "HumanoidRootPart" then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+
     local function hookPlayerAntiFling(p)
         if p == self.Services.Players.LocalPlayer then return end
         p.CharacterAdded:Connect(function(char)
-            if (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.WalkFling then
-                task.wait(0.1)
+            task.wait(0.1)
+            local isAntiFling = (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.AntiFling
+            if isAntiFling then
                 disablePlayerCollisions(char)
-                char.DescendantAdded:Connect(function(child)
-                    if ((self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.WalkFling) and child:IsA("BasePart") and child.CanCollide then
-                        child.CanCollide = false
-                    end
-                end)
+            elseif self.Config.Toggles.WalkFling then
+                applyWalkFlingPlayerCollisions(char)
+            else
+                restorePlayerCollisions(char)
             end
+            char.DescendantAdded:Connect(function(child)
+                if child:IsA("BasePart") then
+                    local isAF = (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.AntiFling
+                    if isAF and child.CanCollide then
+                        child.CanCollide = false
+                    elseif self.Config.Toggles.WalkFling then
+                        if child.Name == "HumanoidRootPart" then
+                            child.CanCollide = true
+                        else
+                            child.CanCollide = false
+                        end
+                    end
+                end
+            end)
         end)
-        if p.Character and ((self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.WalkFling) then
-            disablePlayerCollisions(p.Character)
+        if p.Character then
+            local isAntiFling = (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.AntiFling
+            if isAntiFling then
+                disablePlayerCollisions(p.Character)
+            elseif self.Config.Toggles.WalkFling then
+                applyWalkFlingPlayerCollisions(p.Character)
+            end
         end
     end
 
@@ -6803,11 +7243,19 @@ function Hub:StartMainLoops()
     task.spawn(function()
         while true do
             task.wait(1.0)
-            if (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.WalkFling then
-                local lp = self.Services.Players.LocalPlayer
+            local isAntiFling = (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.AntiFling
+            local isWalkFling = self.Config.Toggles.WalkFling
+            local lp = self.Services.Players.LocalPlayer
+            if isAntiFling then
                 for _, p in ipairs(self.Services.Players:GetPlayers()) do
                     if p ~= lp and p.Character then
                         disablePlayerCollisions(p.Character)
+                    end
+                end
+            elseif isWalkFling then
+                for _, p in ipairs(self.Services.Players:GetPlayers()) do
+                    if p ~= lp and p.Character then
+                        applyWalkFlingPlayerCollisions(p.Character)
                     end
                 end
             end
@@ -6851,8 +7299,10 @@ function Hub:StartMainLoops()
         end
     end)
 
-    -- Walk Fling (Argon 4 logic: CustomPhysicalProperties max density + HRP collision filter)
+    -- Walk Fling (Clean touch impulse + smooth player no-clip + jump & death safeguards)
     local wasWalkFling = false
+    local lastValidPos = nil
+
     self.Services.RunService.Stepped:Connect(function()
         local lp = self.Services.Players.LocalPlayer
         local char = lp and lp.Character
@@ -6861,9 +7311,12 @@ function Hub:StartMainLoops()
 
         if self.Config.Toggles.WalkFling then
             wasWalkFling = true
-            if myHrp then
-                myHrp.CustomPhysicalProperties = PhysicalProperties.new(100, 0, 0, 0, 0)
+
+            -- Keep natural humanoid physics properties (NEVER set Density to 100 which ruins jumping)
+            if myHrp and myHrp.CustomPhysicalProperties ~= nil then
+                myHrp.CustomPhysicalProperties = nil
             end
+
             if hum and hum.Health > 0 then
                 hum.PlatformStand = false
                 hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
@@ -6879,12 +7332,17 @@ function Hub:StartMainLoops()
                 end
             end
 
-            -- Disable collisions on ALL other players' parts so you walk through players smoothly (just like Anti-Fling):
+            -- WalkFling: disable collision on opponents' limbs so you run right through them,
+            -- but keep their HumanoidRootPart CanCollide = true so the physics engine registers touch contact!
             for _, player in ipairs(self.Services.Players:GetPlayers()) do
                 if player ~= lp and player.Character then
                     for _, part in ipairs(player.Character:GetDescendants()) do
-                        if part:IsA("BasePart") and part.CanCollide then
-                            part.CanCollide = false
+                        if part:IsA("BasePart") then
+                            if part.Name == "HumanoidRootPart" then
+                                if not part.CanCollide then part.CanCollide = true end
+                            else
+                                if part.CanCollide then part.CanCollide = false end
+                            end
                         end
                     end
                 end
@@ -6898,10 +7356,21 @@ function Hub:StartMainLoops()
                 if not self.Config.Toggles.NoClip then
                     self:RestoreCollisions()
                 end
+
+                -- When Walk Fling is turned OFF: restore normal collisions
+                local isAntiFling = (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.AntiFling
+                if not isAntiFling then
+                    for _, player in ipairs(self.Services.Players:GetPlayers()) do
+                        if player ~= lp and player.Character then
+                            restorePlayerCollisions(player.Character)
+                        end
+                    end
+                end
             end
 
             -- AntiFling: Always walk through other players
-            if self.Config.Toggles.AntiFling then
+            local isAntiFling = (self.Config.Toggles.AntiSystem and self.Config.Toggles.AntiFling) or self.Config.Toggles.AntiFling
+            if isAntiFling then
                 for _, p in ipairs(self.Services.Players:GetPlayers()) do
                     if p ~= lp and p.Character then
                         for _, part in ipairs(p.Character:GetDescendants()) do
@@ -6915,8 +7384,7 @@ function Hub:StartMainLoops()
         end
     end)
 
-    -- Walk Fling (Argon 4 logic: Heartbeat velocity impulse -> RenderStepped client restore -> Stepped oscillation)
-    local walkFlingMovel = 0.1
+    -- Walk Fling Physics Loop: Triggers on physical contact (<= 4.5 studs) with instant client restoration
     task.spawn(function()
         while true do
             self.Services.RunService.Heartbeat:Wait()
@@ -6925,39 +7393,66 @@ function Hub:StartMainLoops()
                 local lp = self.Services.Players.LocalPlayer
                 local char = lp and lp.Character
                 local hrp = char and (char:FindFirstChild("HumanoidRootPart") or self:GetRoot(char))
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-                if hrp and hrp.Parent then
-                    -- Proximity check: only apply fling velocity pulse when an opponent is nearby (<= 7.5 studs)
-                    local hasTargetNear = false
+                -- Strict health and character checks: if dead or outside round, NEVER fling or apply forces
+                if hrp and hrp.Parent and hum and hum.Health > 0 and char.Parent then
+                    -- Teleport safeguard: if position jumped > 25 studs (teleported out of round/to lobby), reset velocity
+                    local curPos = hrp.Position
+                    if lastValidPos and (curPos - lastValidPos).Magnitude > 25 then
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyAngularVelocity = Vector3.zero
+                    end
+                    lastValidPos = curPos
+
+                    -- Check if an opponent is within touch distance (<= 4.5 studs)
+                    local targetHrp = nil
+                    local targetDist = 999
                     for _, player in ipairs(self.Services.Players:GetPlayers()) do
                         if player ~= lp and player.Character then
-                            local tHrp = player.Character:FindFirstChild("HumanoidRootPart")
-                            if tHrp and (hrp.Position - tHrp.Position).Magnitude <= 7.5 then
-                                hasTargetNear = true
-                                break
+                            local pHum = player.Character:FindFirstChildOfClass("Humanoid")
+                            local pRoot = player.Character:FindFirstChild("HumanoidRootPart")
+                            if pRoot and pHum and pHum.Health > 0 then
+                                local d = (curPos - pRoot.Position).Magnitude
+                                if d <= 4.5 and d < targetDist then
+                                    targetDist = d
+                                    targetHrp = pRoot
+                                end
                             end
                         end
                     end
 
-                    if hasTargetNear then
+                    if targetHrp then
+                        -- Target touched! Transfer massive physics momentum
                         local oldVel = hrp.AssemblyLinearVelocity
-                        local oldCFrame = hrp.CFrame
+                        local oldRot = hrp.AssemblyAngularVelocity
 
-                        hrp.AssemblyLinearVelocity = oldVel * 10000 + Vector3.new(0, 10000, 0)
+                        local dir = (targetHrp.Position - curPos)
+                        if dir.Magnitude > 0.01 then
+                            dir = dir.Unit
+                        else
+                            dir = hrp.CFrame.LookVector
+                        end
+
+                        hrp.AssemblyAngularVelocity = Vector3.new(0, 100000, 0)
+                        hrp.AssemblyLinearVelocity = (dir * 9000) + Vector3.new(0, 8000, 0)
 
                         self.Services.RunService.RenderStepped:Wait()
                         if hrp and hrp.Parent then
                             hrp.AssemblyLinearVelocity = oldVel
-                            hrp.CFrame = oldCFrame
-                        end
-
-                        self.Services.RunService.Stepped:Wait()
-                        if hrp and hrp.Parent then
-                            hrp.AssemblyLinearVelocity = oldVel + Vector3.new(0, walkFlingMovel, 0)
-                            walkFlingMovel = -walkFlingMovel
+                            hrp.AssemblyAngularVelocity = oldRot
                         end
                     end
+                else
+                    -- Player is dead or respawning: force zero fling velocities so player is NEVER sent into space
+                    if hrp and hrp.Parent then
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyAngularVelocity = Vector3.zero
+                    end
+                    lastValidPos = nil
                 end
+            else
+                lastValidPos = nil
             end
         end
     end)
@@ -6992,6 +7487,16 @@ function Hub:StartMainLoops()
                 self:ApplySkinToDisplay(rec)
                 self:ApplySkinToTool(rec)
             end
+        end
+        if self.Config.Toggles.Aura then
+            task.delay(0.4, function()
+                if self.Config.Toggles.Aura then
+                    pcall(function() self:ApplyVisualAura() end)
+                end
+            end)
+        end
+        if self.Config.Toggles.ChinaHat then
+            pcall(function() self:UpdateChinaHat() end)
         end
     end)
     self:SetupAntiAFK()
@@ -7273,6 +7778,10 @@ function Hub:Unload()
         pcall(function() self.State.KeybindsHUD:Destroy() end)
         self.State.KeybindsHUD = nil
     end
+    pcall(function() self:ClearChinaHat() end)
+    pcall(function() self:ClearVisualAura() end)
+    pcall(function() self:RestoreSkybox() end)
+    pcall(function() self:DisableShader() end)
     if self.State.Gui then
         pcall(function() self.State.Gui:Destroy() end)
         self.State.Gui = nil
@@ -8029,60 +8538,809 @@ end
 function Hub:UpdatePreviewLocalESP()
     self:UpdatePreviewSkeleton()
 end
-function Hub:UpdateChinaHat()
+-- ========================================================
+-- CHINA HAT (Shitaro 2D Drawing Rasterizer)
+-- ========================================================
+function Hub:OrderChinaHat(i, j)
+    local px, py = self.ChinaHat.Px, self.ChinaHat.Py
+    local ax, bx = px[i], px[j]
+    return ax == bx and py[i] < py[j] or ax < bx
+end
+
+function Hub:HullChinaHat(n)
+    local ch = self.ChinaHat
+    local px, py, ord, st = ch.Px, ch.Py, ch.Ord, ch.Stack
+    for i = 1, n do ord[i] = i end
+    table.sort(ord, function(i, j)
+        local ax, bx = px[i], px[j]
+        return ax == bx and py[i] < py[j] or ax < bx
+    end)
+    local m = 0
+    for k = 1, n do
+        local i = ord[k]
+        local x, y = px[i], py[i]
+        while m >= 2 do
+            local o, a = st[m - 1], st[m]
+            local ox, oy = px[o], py[o]
+            if (px[a] - ox) * (y - oy) - (py[a] - oy) * (x - ox) > 0 then break end
+            m = m - 1
+        end
+        m = m + 1
+        st[m] = i
+    end
+    local lower = m
+    for k = n - 1, 1, -1 do
+        local i = ord[k]
+        local x, y = px[i], py[i]
+        while m > lower do
+            local o, a = st[m - 1], st[m]
+            local ox, oy = px[o], py[o]
+            if (px[a] - ox) * (y - oy) - (py[a] - oy) * (x - ox) > 0 then break end
+            m = m - 1
+        end
+        m = m + 1
+        st[m] = i
+    end
+    return m - 1
+end
+
+function Hub:VisibleChinaHat(state)
+    local ch = self.ChinaHat
+    local rows, shown = ch.Rows, ch.Shown
+    for i = 1, #rows do
+        if shown[i] ~= state then
+            rows[i].Visible = state
+            shown[i] = state
+        end
+    end
+end
+
+function Hub:ClearChinaHat()
+    local ch = self.ChinaHat
+    local rows = ch.Rows
+    for i = 1, #rows do
+        pcall(function() rows[i]:Remove() end)
+    end
+    table.clear(rows)
+    table.clear(ch.Shown)
+    table.clear(ch.CPos)
+    table.clear(ch.CSize)
+    table.clear(ch.CCol)
+    ch.Head, ch.Pos, ch.CF = nil, nil, nil
+    ch.Fov, ch.Vx, ch.Vy, ch.Col = nil, nil, nil, nil
+
     local lp = self.Services.Players.LocalPlayer
     local char = lp and lp.Character
-    if not char then return end
+    if char then
+        local old = char:FindFirstChild("LocalChinaHat")
+        if old then pcall(function() old:Destroy() end) end
+    end
+end
 
-    local existing = char:FindFirstChild("LocalChinaHat")
+function Hub:GetChinaHatRow(index)
+    local ch = self.ChinaHat
+    local rows = ch.Rows
+    local row = rows[index]
+    if row then return row end
+    local ok, newRow = pcall(function()
+        local r = Drawing.new("Square")
+        r.Filled = true
+        r.Thickness = 0
+        r.Transparency = ch.Alpha
+        r.Visible = false
+        r.ZIndex = 1
+        return r
+    end)
+    if ok and newRow then
+        rows[index] = newRow
+        ch.Shown[index] = false
+        return newRow
+    end
+    return nil
+end
+
+function Hub:UpdateChinaHat()
     if not self.Config.Toggles.ChinaHat then
-        if existing then pcall(function() existing:Destroy() end) end
+        self:ClearChinaHat()
+    else
+        self:ClearChinaHat()
+    end
+end
+
+function Hub:UpdateChinaHatFrame()
+    if not self.Config.Toggles.ChinaHat then
+        self:ClearChinaHat()
+        return
+    end
+    local lp = self.Services.Players.LocalPlayer
+    local char = lp and lp.Character
+    local head = char and char:FindFirstChild("Head")
+    local camera = self.Services.Workspace.CurrentCamera
+    if not head or not head:IsA("BasePart") or not camera then
+        self:VisibleChinaHat(false)
         return
     end
 
-    local head = char:FindFirstChild("Head")
-    if not head then return end
+    local ch = self.ChinaHat
+    local headPos = head.Position
+    local camCF = camera.CFrame
+    local fov = camera.FieldOfView
+    local view = camera.ViewportSize
+    local viewX, viewY = view.X, view.Y
+    local targetCol = self.Config.Values.ChinaHatColor or self.Theme.Accent or Color3.fromRGB(255, 255, 255)
 
-    if not existing then
-        existing = Instance.new("Part")
-        existing.Name = "LocalChinaHat"
-        existing.Anchored = true
-        existing.CanCollide = false
-        existing.CanTouch = false
-        existing.CanQuery = false
-        existing.Massless = true
-        existing.CastShadow = false
-        existing.Material = Enum.Material.Neon
-        existing.Transparency = 0.25
+    if ch.Head == head and ch.Pos == headPos and ch.CF == camCF
+        and ch.Fov == fov and ch.Vx == viewX and ch.Vy == viewY and ch.Col == targetCol then
+        return
+    end
+    ch.Head, ch.Pos, ch.CF = head, headPos, camCF
+    ch.Fov, ch.Vx, ch.Vy, ch.Col = fov, viewX, viewY, targetCol
 
-        local sm = Instance.new("SpecialMesh")
-        sm.Name = "ConeMesh"
-        sm.MeshType = Enum.MeshType.FileMesh
-        sm.MeshId = "rbxassetid://7058488362"
-        sm.Scale = Vector3.new(1.05, 0.95, 1.05)
-        sm.Parent = existing
+    local px, py, cosT, sinT = ch.Px, ch.Py, ch.Cos, ch.Sin
+    local baseY = headPos.Y + head.Size.Y * 0.5 - ch.Drop
+    local center = Vector3.new(headPos.X, baseY, headPos.Z)
+    local apex = camera:WorldToViewportPoint(center + Vector3.new(0, ch.Height, 0))
+    if apex.Z <= 0 then
+        self:VisibleChinaHat(false)
+        return
+    end
+    local probe = camera:WorldToViewportPoint(center + Vector3.new(cosT[1], 0, sinT[1]))
+    if probe.Z <= 0 then
+        self:VisibleChinaHat(false)
+        return
+    end
+    px[1], py[1] = apex.X, apex.Y
+    px[2], py[2] = probe.X, probe.Y
+    local camPos = camCF.Position
+    local rv = camCF.RightVector
+    local uv = camCF.UpVector
+    local lv = camCF.LookVector
+    local rvx, rvy, rvz = rv.X, rv.Y, rv.Z
+    local uvx, uvy, uvz = uv.X, uv.Y, uv.Z
+    local lvx, lvy, lvz = lv.X, lv.Y, lv.Z
+    local relX = center.X - camPos.X
+    local relY = center.Y - camPos.Y
+    local relZ = center.Z - camPos.Z
+    local baseR = relX * rvx + relY * rvy + relZ * rvz
+    local baseU = relX * uvx + relY * uvy + relZ * uvz
+    local baseD = relX * lvx + relY * lvy + relZ * lvz
+    local tanFov = math.tan(math.rad(fov * 0.5))
+    local scale = (viewY * 0.5) / tanFov
+    local midX, midY = viewX * 0.5, viewY * 0.5
+    local exact = false
+    local eps = ch.Eps
+    local dep = baseD + ch.Height * lv.Y
+    if dep > 0 then
+        local inv = scale / dep
+        if math.abs(midX + (baseR + ch.Height * rv.Y) * inv - apex.X) <= eps
+            and math.abs(midY - (baseU + ch.Height * uv.Y) * inv - apex.Y) <= eps then
+            local c, s = cosT[1], sinT[1]
+            dep = baseD + c * lvx + s * lvz
+            if dep > 0 then
+                inv = scale / dep
+                if math.abs(midX + (baseR + c * rvx + s * rvz) * inv - probe.X) <= eps
+                    and math.abs(midY - (baseU + c * uvx + s * uvz) * inv - probe.Y) <= eps then
+                    exact = true
+                end
+            end
+        end
+    end
+    if exact then
+        for i = 2, ch.Segments do
+            local c, s = cosT[i], sinT[i]
+            local d = baseD + c * lvx + s * lvz
+            if d <= 0 then
+                self:VisibleChinaHat(false)
+                return
+            end
+            local inv = scale / d
+            px[i + 1] = midX + (baseR + c * rvx + s * rvz) * inv
+            py[i + 1] = midY - (baseU + c * uvx + s * uvz) * inv
+        end
+    else
+        for i = 2, ch.Segments do
+            local point = camera:WorldToViewportPoint(center + Vector3.new(cosT[i], 0, sinT[i]))
+            if point.Z <= 0 then
+                self:VisibleChinaHat(false)
+                return
+            end
+            px[i + 1] = point.X
+            py[i + 1] = point.Y
+        end
+    end
+    local hn = self:HullChinaHat(ch.Segments + 1)
+    if hn < 3 then
+        self:VisibleChinaHat(false)
+        return
+    end
+    local st = ch.Stack
+    local minY, maxY = math.huge, -math.huge
+    for i = 1, hn do
+        local y = py[st[i]]
+        if y < minY then minY = y end
+        if y > maxY then maxY = y end
+    end
+    local firstY = math.max(0, math.floor(minY))
+    local lastY = math.min(viewY, math.ceil(maxY))
+    if lastY - firstY < 2 then
+        self:VisibleChinaHat(false)
+        return
+    end
+    local step = math.max(1, math.ceil((lastY - firstY) / ch.MaxRows))
+    local span = math.max(1, maxY - minY)
+    local rows, shown = ch.Rows, ch.Shown
+    local cpos, csize, ccol = ch.CPos, ch.CSize, ch.CCol
+    local white, black = ch.White, ch.Black
+    local used = 0
+    for y0 = firstY, lastY - 1, step do
+        local height = math.min(step, lastY - y0)
+        local y = y0 + height * 0.5
+        local left, right = math.huge, -math.huge
+        local ax, ay = px[st[hn]], py[st[hn]]
+        for i = 1, hn do
+            local ix = st[i]
+            local bx, by = px[ix], py[ix]
+            if (ay <= y and by > y) or (by <= y and ay > y) then
+                local x = ax + (y - ay) * (bx - ax) / (by - ay)
+                if x < left then left = x end
+                if x > right then right = x end
+            end
+            ax, ay = bx, by
+        end
+        local width = right - left
+        if width >= 2.5 then
+            used = used + 1
+            local row = self:GetChinaHatRow(used)
+            if row then
+                local t = (y - minY) / span
+                local light = 1 - t * 1.35
+                local dark = (t - 0.58) / 0.42
+                if light < 0 then light = 0 end
+                if dark < 0 then dark = 0 end
+                local color = targetCol:Lerp(white, light * 0.26):Lerp(black, dark * 0.1)
+                local pos = Vector2.new(left, y0)
+                local size = Vector2.new(width, height)
+                if cpos[used] ~= pos then
+                    row.Position = pos
+                    cpos[used] = pos
+                end
+                if csize[used] ~= size then
+                    row.Size = size
+                    csize[used] = size
+                end
+                if ccol[used] ~= color then
+                    row.Color = color
+                    ccol[used] = color
+                end
+                if not shown[used] then
+                    row.Visible = true
+                    shown[used] = true
+                end
+            end
+        end
+    end
+    for i = used + 1, #rows do
+        if shown[i] then
+            rows[i].Visible = false
+            shown[i] = false
+        end
+    end
+end
 
-        existing.Parent = char
+-- ========================================================
+-- VISUAL AURAS (Shitaro Asset Effects)
+-- ========================================================
+function Hub:LoadAuraModel(name)
+    local A = self.Aura
+    if A.Cache[name] then return A.Cache[name] end
+    local id = A.Ids[name]
+    if not id then return nil end
+    local ok, objs = pcall(game.GetObjects, game, "rbxassetid://" .. id)
+    if ok and objs and objs[1] then
+        A.Cache[name] = objs[1]
+        return objs[1]
+    end
+    return nil
+end
+
+function Hub:ColorAuraModel(model, color)
+    local seq = ColorSequence.new(color)
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("PointLight") then
+            d.Color = color
+        elseif d:IsA("ParticleEmitter") or d:IsA("Beam") or d:IsA("Trail") then
+            d.Color = seq
+        end
+    end
+end
+
+function Hub:ClearVisualAura()
+    local A = self.Aura
+    for i = #A.Particles, 1, -1 do
+        pcall(function() A.Particles[i]:Destroy() end)
+        A.Particles[i] = nil
     end
 
-    existing.Color = self.Theme.Accent or Color3.fromRGB(255, 255, 255)
+    local lp = self.Services.Players.LocalPlayer
+    local char = lp and lp.Character
+    if char then
+        for _, part in ipairs(char:GetChildren()) do
+            if part:IsA("BasePart") then
+                for _, child in ipairs(part:GetChildren()) do
+                    if child:IsA("ParticleEmitter") or child:IsA("Beam") or child:IsA("Trail") or child:IsA("PointLight") then
+                        local isAura = false
+                        for auraName, _ in pairs(A.Ids) do
+                            if child.Name:lower():find(auraName) or child.Name:find("Aura") or child.Name:find("Effect") then
+                                isAura = true
+                                break
+                            end
+                        end
+                        if isAura then
+                            pcall(function() child:Destroy() end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    A.Host = nil
 end
-function Hub:UpdateChinaHatFrame()
-    if not self.Config.Toggles.ChinaHat then return end
+
+function Hub:ApplyVisualAura()
+    self:ClearVisualAura()
+    if not self.Config.Toggles.Aura then return end
+
     local lp = self.Services.Players.LocalPlayer
     local char = lp and lp.Character
     if not char then return end
-    local hat = char:FindFirstChild("LocalChinaHat")
-    local head = char:FindFirstChild("Head")
-    if not hat and head then
-        self:UpdateChinaHat()
-        hat = char:FindFirstChild("LocalChinaHat")
+
+    local auraType = self.Config.Values.AuraType or "angel"
+    local auraColor = self.Config.Values.AuraColor or self.Theme.Accent or Color3.fromRGB(133, 220, 255)
+    local src = self:LoadAuraModel(auraType)
+    if not src then return end
+
+    self:ColorAuraModel(src, auraColor)
+    local cloned = src:Clone()
+    for _, part in ipairs(cloned:GetChildren()) do
+        local target = char:FindFirstChild(part.Name, true)
+        if not target then
+            local group = self.Aura.GroupOf[part.Name]
+            if group then
+                local names = self.Aura.Groups[group]
+                for i = 1, #names do
+                    local p = char:FindFirstChild(names[i], true)
+                    if p and p:IsA("BasePart") then
+                        target = p
+                        break
+                    end
+                end
+            end
+        end
+        if target and target:IsA("BasePart") then
+            for _, child in ipairs(part:GetChildren()) do
+                child.Parent = target
+                table.insert(self.Aura.Particles, child)
+            end
+        end
     end
-    if hat and head then
-        local rot = (os.clock() * 100) % 360
-        hat.CFrame = head.CFrame * CFrame.new(0, 0.68, 0) * CFrame.Angles(0, math.rad(rot), 0)
-        hat.Color = self.Theme.Accent or Color3.fromRGB(255, 255, 255)
+    cloned:Destroy()
+    self.Aura.Host = char
+end
+
+function Hub:SyncVisualAura()
+    if not self.Config.Toggles.Aura then return end
+    local lp = self.Services.Players.LocalPlayer
+    local char = lp and lp.Character
+    if not char then return end
+    if char ~= self.Aura.Host then
+        self:ApplyVisualAura()
+        return
     end
+    local first = self.Aura.Particles[1]
+    if first and not first.Parent then
+        self:ApplyVisualAura()
+    end
+end
+
+-- ========================================================
+-- CUSTOM SKY (Shitaro Skyboxes)
+-- ========================================================
+function Hub:ApplySkybox(name)
+    local S = self.Sky
+    local lighting = self.Services.Lighting
+
+    if not S.OriginalSky then
+        local existing = lighting:FindFirstChildOfClass("Sky")
+        if existing and existing ~= S.CreatedSky then
+            S.OriginalSky = existing
+            S.OriginalSkyParent = existing.Parent
+            pcall(function() existing.Parent = nil end)
+        end
+    end
+
+    if S.CreatedSky then
+        pcall(function() S.CreatedSky:Destroy() end)
+        S.CreatedSky = nil
+    end
+
+    if S.Skyboxes[name] then
+        local data = S.Skyboxes[name]
+        local sky = Instance.new("Sky")
+        sky.Name = "DynamicSky"
+        for k, v in pairs(data) do
+            pcall(function() sky[k] = v end)
+        end
+        sky.Parent = lighting
+        S.CreatedSky = sky
+    elseif S.Assets[name] then
+        local assetId = S.Assets[name]
+        task.spawn(function()
+            local ok, objs = pcall(function() return game:GetObjects("rbxassetid://" .. assetId) end)
+            if not ok or type(objs) ~= "table" then return end
+            local found = nil
+            for _, o in ipairs(objs) do
+                if o:IsA("Sky") then
+                    found = o
+                    break
+                end
+                local s = o:FindFirstChildWhichIsA("Sky", true)
+                if s then
+                    found = s
+                    break
+                end
+            end
+            if not found or not self.Config.Toggles.CustomSky then return end
+            if S.CreatedSky then
+                pcall(function() S.CreatedSky:Destroy() end)
+            end
+            found.Name = "DynamicSky"
+            found.Parent = lighting
+            S.CreatedSky = found
+        end)
+    end
+end
+
+function Hub:RestoreSkybox()
+    local S = self.Sky
+    if S.CreatedSky then
+        pcall(function() S.CreatedSky:Destroy() end)
+        S.CreatedSky = nil
+    end
+    if S.OriginalSky then
+        pcall(function() S.OriginalSky.Parent = S.OriginalSkyParent or self.Services.Lighting end)
+        S.OriginalSky = nil
+        S.OriginalSkyParent = nil
+    end
+end
+
+-- ========================================================
+-- SHADERS (Shitaro Post-processing & Lighting)
+-- ========================================================
+function Hub:EnsureShaderEffects()
+    local lighting = self.Services.Lighting
+    local S = self.Shaders
+    if not S.BloomEffect or not S.BloomEffect.Parent then
+        S.BloomEffect = lighting:FindFirstChildOfClass("BloomEffect")
+        if not S.BloomEffect then
+            S.BloomEffect = Instance.new("BloomEffect")
+            S.BloomEffect.Enabled = false
+            S.BloomEffect.Parent = lighting
+            S.CreatedEffects.bloom = true
+        end
+    end
+    if not S.BlurEffect or not S.BlurEffect.Parent then
+        S.BlurEffect = lighting:FindFirstChildOfClass("BlurEffect")
+        if not S.BlurEffect then
+            S.BlurEffect = Instance.new("BlurEffect")
+            S.BlurEffect.Enabled = false
+            S.BlurEffect.Size = 0
+            S.BlurEffect.Parent = lighting
+            S.CreatedEffects.blur = true
+        end
+    end
+    if not S.ColorCorEffect or not S.ColorCorEffect.Parent then
+        S.ColorCorEffect = lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+        if not S.ColorCorEffect then
+            S.ColorCorEffect = Instance.new("ColorCorrectionEffect")
+            S.ColorCorEffect.Enabled = false
+            S.ColorCorEffect.Parent = lighting
+            S.CreatedEffects.colorcor = true
+        end
+    end
+    if not S.DepthEffect or not S.DepthEffect.Parent then
+        S.DepthEffect = lighting:FindFirstChildOfClass("DepthOfFieldEffect")
+        if not S.DepthEffect then
+            S.DepthEffect = Instance.new("DepthOfFieldEffect")
+            S.DepthEffect.Enabled = false
+            S.DepthEffect.Parent = lighting
+            S.CreatedEffects.depth = true
+        end
+    end
+    if not S.AtmosphereEffect or not S.AtmosphereEffect.Parent then
+        S.AtmosphereEffect = lighting:FindFirstChildOfClass("Atmosphere")
+        if not S.AtmosphereEffect then
+            S.AtmosphereEffect = Instance.new("Atmosphere")
+            S.AtmosphereEffect.Parent = lighting
+            S.CreatedEffects.atmosphere = true
+        end
+    end
+    local terrain = self.Services.Workspace.Terrain
+    if terrain and (not S.CloudEffect or not S.CloudEffect.Parent) then
+        S.CloudEffect = terrain:FindFirstChildOfClass("Clouds")
+        if not S.CloudEffect then
+            S.CloudEffect = Instance.new("Clouds")
+            S.CloudEffect.Cover = 0
+            S.CloudEffect.Density = 0
+            S.CloudEffect.Parent = terrain
+            S.CreatedEffects.cloud = true
+        end
+    end
+end
+
+function Hub:SaveOriginalShaderEffects()
+    local lighting = self.Services.Lighting
+    local S = self.Shaders
+    if S.OriginalLightingSaved then return end
+    S.OriginalLightingSaved = true
+    S.OriginalLighting = {
+        Ambient = lighting.Ambient,
+        OutdoorAmbient = lighting.OutdoorAmbient,
+        Brightness = lighting.Brightness,
+        ClockTime = lighting.ClockTime,
+        ColorShift_Bottom = lighting.ColorShift_Bottom,
+        ColorShift_Top = lighting.ColorShift_Top,
+        EnvironmentDiffuseScale = lighting.EnvironmentDiffuseScale,
+        EnvironmentSpecularScale = lighting.EnvironmentSpecularScale,
+        GeographicLatitude = lighting.GeographicLatitude,
+        ExposureCompensation = lighting.ExposureCompensation,
+        GlobalShadows = lighting.GlobalShadows,
+        FogStart = lighting.FogStart,
+        FogEnd = lighting.FogEnd,
+        FogColor = lighting.FogColor
+    }
+    local cc = lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+    if cc then
+        S.OriginalEffects.colorcor = {
+            Brightness = cc.Brightness,
+            Contrast = cc.Contrast,
+            Saturation = cc.Saturation,
+            TintColor = cc.TintColor,
+            Enabled = cc.Enabled
+        }
+    end
+    local bl = lighting:FindFirstChildOfClass("BloomEffect")
+    if bl then
+        S.OriginalEffects.bloom = {
+            Intensity = bl.Intensity,
+            Size = bl.Size,
+            Threshold = bl.Threshold,
+            Enabled = bl.Enabled
+        }
+    end
+    local blur = lighting:FindFirstChildOfClass("BlurEffect")
+    if blur then
+        S.OriginalEffects.blur = {
+            Size = blur.Size,
+            Enabled = blur.Enabled
+        }
+    end
+    local dof = lighting:FindFirstChildOfClass("DepthOfFieldEffect")
+    if dof then
+        S.OriginalEffects.depth = {
+            FarIntensity = dof.FarIntensity,
+            FocusDistance = dof.FocusDistance,
+            InFocusRadius = dof.InFocusRadius,
+            NearIntensity = dof.NearIntensity,
+            Enabled = dof.Enabled
+        }
+    end
+    local atm = lighting:FindFirstChildOfClass("Atmosphere")
+    if atm then
+        S.OriginalEffects.atmosphere = {
+            Density = atm.Density,
+            Offset = atm.Offset,
+            Color = atm.Color,
+            Decay = atm.Decay,
+            Glare = atm.Glare,
+            Haze = atm.Haze
+        }
+    end
+    local terr = self.Services.Workspace.Terrain
+    local cld = terr and terr:FindFirstChildOfClass("Clouds")
+    if cld then
+        S.OriginalEffects.cloud = {
+            Cover = cld.Cover,
+            Density = cld.Density,
+            Color = cld.Color
+        }
+    end
+end
+
+function Hub:ApplyShader(shaderType)
+    local S = self.Shaders
+    local d = S.Presets[shaderType]
+    if not d then return end
+    S.CurrentType = shaderType
+    self:SaveOriginalShaderEffects()
+    self:EnsureShaderEffects()
+    local lighting = self.Services.Lighting
+
+    if lighting.Ambient ~= d.Ambient then lighting.Ambient = d.Ambient end
+    if lighting.Brightness ~= d.Brightness then lighting.Brightness = d.Brightness end
+    if lighting.ClockTime ~= d.ClockTime then lighting.ClockTime = d.ClockTime end
+    if lighting.ColorShift_Bottom ~= d.ColorShift_Bottom then lighting.ColorShift_Bottom = d.ColorShift_Bottom end
+    if lighting.ColorShift_Top ~= d.ColorShift_Top then lighting.ColorShift_Top = d.ColorShift_Top end
+    if lighting.EnvironmentDiffuseScale ~= d.EnvironmentDiffuseScale then lighting.EnvironmentDiffuseScale = d.EnvironmentDiffuseScale end
+    if lighting.EnvironmentSpecularScale ~= d.EnvironmentSpecularScale then lighting.EnvironmentSpecularScale = d.EnvironmentSpecularScale end
+    if lighting.OutdoorAmbient ~= d.OutdoorAmbient then lighting.OutdoorAmbient = d.OutdoorAmbient end
+    if lighting.GeographicLatitude ~= d.GeographicLatitude then lighting.GeographicLatitude = d.GeographicLatitude end
+    if lighting.ExposureCompensation ~= d.ExposureCompensation then lighting.ExposureCompensation = d.ExposureCompensation end
+    if lighting.GlobalShadows ~= d.GlobalShadows then lighting.GlobalShadows = d.GlobalShadows end
+    if lighting.FogEnd ~= math.huge then lighting.FogEnd = math.huge end
+    if lighting.FogStart ~= math.huge then lighting.FogStart = math.huge end
+    if lighting.FogColor ~= Color3.fromRGB(255, 255, 255) then lighting.FogColor = Color3.fromRGB(255, 255, 255) end
+
+    if S.ColorCorEffect and d.ColorCorrection then
+        S.ColorCorEffect.Brightness = d.ColorCorrection.Brightness
+        S.ColorCorEffect.Contrast = d.ColorCorrection.Contrast
+        S.ColorCorEffect.Saturation = d.ColorCorrection.Saturation
+        S.ColorCorEffect.TintColor = d.ColorCorrection.TintColor
+        S.ColorCorEffect.Enabled = true
+    end
+    if S.BloomEffect and d.Bloom then
+        S.BloomEffect.Intensity = d.Bloom.Intensity
+        S.BloomEffect.Size = d.Bloom.Size
+        S.BloomEffect.Threshold = d.Bloom.Threshold
+        S.BloomEffect.Enabled = true
+    end
+    if S.BlurEffect and d.Blur then
+        S.BlurEffect.Size = d.Blur.Size
+        S.BlurEffect.Enabled = false
+    end
+    if S.DepthEffect and d.DepthOfField then
+        S.DepthEffect.FarIntensity = d.DepthOfField.FarIntensity
+        S.DepthEffect.FocusDistance = d.DepthOfField.FocusDistance
+        S.DepthEffect.InFocusRadius = d.DepthOfField.InFocusRadius
+        S.DepthEffect.NearIntensity = d.DepthOfField.NearIntensity
+        S.DepthEffect.Enabled = true
+    end
+    if S.AtmosphereEffect and d.Atmosphere then
+        S.AtmosphereEffect.Density = d.Atmosphere.Density
+        S.AtmosphereEffect.Offset = d.Atmosphere.Offset
+        S.AtmosphereEffect.Color = d.Atmosphere.Color
+        S.AtmosphereEffect.Decay = d.Atmosphere.Decay
+        S.AtmosphereEffect.Glare = d.Atmosphere.Glare
+        S.AtmosphereEffect.Haze = d.Atmosphere.Haze
+    end
+    if S.CloudEffect and d.Clouds then
+        S.CloudEffect.Cover = d.Clouds.Cover
+        S.CloudEffect.Density = d.Clouds.Density
+        S.CloudEffect.Color = d.Clouds.Color
+    end
+end
+
+function Hub:DisableShader()
+    local S = self.Shaders
+    S.Enabled = false
+    if S.Connection then
+        pcall(function() S.Connection:Disconnect() end)
+        S.Connection = nil
+    end
+    local lighting = self.Services.Lighting
+    if S.ColorCorEffect then
+        if S.OriginalEffects.colorcor then
+            for prop, val in pairs(S.OriginalEffects.colorcor) do
+                pcall(function() S.ColorCorEffect[prop] = val end)
+            end
+        elseif S.CreatedEffects.colorcor then
+            pcall(function() S.ColorCorEffect:Destroy() end)
+            S.ColorCorEffect = nil
+            S.CreatedEffects.colorcor = nil
+        end
+    end
+    if S.BloomEffect then
+        if S.OriginalEffects.bloom then
+            for prop, val in pairs(S.OriginalEffects.bloom) do
+                pcall(function() S.BloomEffect[prop] = val end)
+            end
+        elseif S.CreatedEffects.bloom then
+            pcall(function() S.BloomEffect:Destroy() end)
+            S.BloomEffect = nil
+            S.CreatedEffects.bloom = nil
+        end
+    end
+    if S.BlurEffect then
+        if S.OriginalEffects.blur then
+            for prop, val in pairs(S.OriginalEffects.blur) do
+                pcall(function() S.BlurEffect[prop] = val end)
+            end
+        elseif S.CreatedEffects.blur then
+            pcall(function() S.BlurEffect:Destroy() end)
+            S.BlurEffect = nil
+            S.CreatedEffects.blur = nil
+        end
+    end
+    if S.DepthEffect then
+        if S.OriginalEffects.depth then
+            for prop, val in pairs(S.OriginalEffects.depth) do
+                pcall(function() S.DepthEffect[prop] = val end)
+            end
+        elseif S.CreatedEffects.depth then
+            pcall(function() S.DepthEffect:Destroy() end)
+            S.DepthEffect = nil
+            S.CreatedEffects.depth = nil
+        end
+    end
+    if S.AtmosphereEffect then
+        if S.OriginalEffects.atmosphere then
+            for prop, val in pairs(S.OriginalEffects.atmosphere) do
+                pcall(function() S.AtmosphereEffect[prop] = val end)
+            end
+        elseif S.CreatedEffects.atmosphere then
+            pcall(function() S.AtmosphereEffect:Destroy() end)
+            S.AtmosphereEffect = nil
+            S.CreatedEffects.atmosphere = nil
+        end
+    end
+    if S.CloudEffect then
+        if S.OriginalEffects.cloud then
+            for prop, val in pairs(S.OriginalEffects.cloud) do
+                pcall(function() S.CloudEffect[prop] = val end)
+            end
+        elseif S.CreatedEffects.cloud then
+            pcall(function() S.CloudEffect:Destroy() end)
+            S.CloudEffect = nil
+            S.CreatedEffects.cloud = nil
+        end
+    end
+
+    if S.OriginalLightingSaved and S.OriginalLighting then
+        local ol = S.OriginalLighting
+        lighting.Ambient = ol.Ambient or Color3.fromRGB(128, 128, 128)
+        lighting.OutdoorAmbient = ol.OutdoorAmbient or Color3.fromRGB(128, 128, 128)
+        lighting.Brightness = ol.Brightness or 1
+        lighting.ClockTime = ol.ClockTime or 14
+        lighting.ColorShift_Bottom = ol.ColorShift_Bottom or Color3.new(0, 0, 0)
+        lighting.ColorShift_Top = ol.ColorShift_Top or Color3.new(0, 0, 0)
+        lighting.EnvironmentDiffuseScale = ol.EnvironmentDiffuseScale or 0
+        lighting.EnvironmentSpecularScale = ol.EnvironmentSpecularScale or 0
+        lighting.GeographicLatitude = ol.GeographicLatitude or 0
+        lighting.ExposureCompensation = ol.ExposureCompensation or 0
+        lighting.GlobalShadows = ol.GlobalShadows ~= nil and ol.GlobalShadows or true
+        lighting.FogStart = ol.FogStart or 0
+        lighting.FogEnd = ol.FogEnd or 1000
+        lighting.FogColor = ol.FogColor or Color3.fromRGB(128, 128, 128)
+    end
+    self:ApplyWorldSettings()
+end
+
+function Hub:StartShaderLoop()
+    local S = self.Shaders
+    if S.Connection then return end
+    local accum = 0
+    S.Connection = self.Services.RunService.Heartbeat:Connect(function(dt)
+        if not self.Config.Toggles.Shaders then return end
+        local d = S.Presets[self.Config.Values.ShaderPreset or "morning"]
+        if not d then return end
+        accum = accum + dt
+        if accum >= 1 then
+            accum = 0
+            self:ApplyShader(self.Config.Values.ShaderPreset or "morning")
+            return
+        end
+        local lighting = self.Services.Lighting
+        if lighting.Ambient ~= d.Ambient
+            or lighting.Brightness ~= d.Brightness
+            or lighting.ClockTime ~= d.ClockTime
+            or lighting.OutdoorAmbient ~= d.OutdoorAmbient
+            or lighting.ExposureCompensation ~= d.ExposureCompensation
+            or lighting.GlobalShadows ~= d.GlobalShadows
+            or lighting.ColorShift_Top ~= d.ColorShift_Top
+            or lighting.FogEnd ~= math.huge then
+            self:ApplyShader(self.Config.Values.ShaderPreset or "morning")
+        end
+    end)
+    table.insert(self.State.Connections, S.Connection)
 end
 function Hub:CreateJumpCircle()
     if not self.Config.Toggles.JumpCircles then return end
@@ -9899,7 +11157,7 @@ function Hub:Init()
     main.Parent = screen
     self.State.MainFrame = main
     self:Corner(main, 14)
-    self:Stroke(main, self.Theme.Border, 1)
+    self.State.MainStroke = self:Stroke(main, self.Theme.Border, 1)
 
     local mainScale = Instance.new("UIScale")
     mainScale.Name = "MainScale"
@@ -9907,7 +11165,7 @@ function Hub:Init()
     mainScale.Parent = main
     self.State.MainScale = mainScale
 
-    -- TopBar (Header)
+    -- TopBar (Header with cohesive theme gradient & neon seam)
     local topbar = Instance.new("Frame")
     topbar.Name = "TopBar"
     topbar.Size = UDim2.new(1, 0, 0, 48)
@@ -9918,6 +11176,15 @@ function Hub:Init()
     self.State.TopBar = topbar
     self:Corner(topbar, 14)
 
+    local topGrad = Instance.new("UIGradient")
+    topGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 21, 36)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(18, 16, 26)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 12, 18))
+    })
+    topGrad.Rotation = 90
+    topGrad.Parent = topbar
+
     local topFiller = Instance.new("Frame")
     topFiller.Name = "TopFiller"
     topFiller.Position = UDim2.new(0, 0, 1, -14)
@@ -9927,14 +11194,37 @@ function Hub:Init()
     topFiller.ZIndex = 20
     topFiller.Parent = topbar
 
+    local topFillerGrad = Instance.new("UIGradient")
+    topFillerGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(18, 16, 26)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 12, 18))
+    })
+    topFillerGrad.Rotation = 90
+    topFillerGrad.Parent = topFiller
+
     local topDivider = Instance.new("Frame")
     topDivider.Name = "TopDivider"
     topDivider.Size = UDim2.new(1, 0, 0, 1)
     topDivider.Position = UDim2.new(0, 0, 1, -1)
-    topDivider.BackgroundColor3 = self.Theme.Border
+    topDivider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     topDivider.BorderSizePixel = 0
     topDivider.ZIndex = 21
     topDivider.Parent = topbar
+
+    local topDivGrad = Instance.new("UIGradient")
+    topDivGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, self.Theme.Accent),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 160, 255)),
+        ColorSequenceKeypoint.new(1, self.Theme.Accent)
+    })
+    topDivGrad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.9),
+        NumberSequenceKeypoint.new(0.2, 0.25),
+        NumberSequenceKeypoint.new(0.5, 0.05),
+        NumberSequenceKeypoint.new(0.8, 0.25),
+        NumberSequenceKeypoint.new(1, 0.9)
+    })
+    topDivGrad.Parent = topDivider
 
     -- LEFT HEADER: TopBar Logo + Title "DYNAMIC"
     local topLogo = Instance.new("ImageLabel")
@@ -10548,25 +11838,44 @@ function Hub:Init()
         end
     end)
 
-    -- LEFT SIDEBAR (разделы слева - compact 132px)
+    -- LEFT SIDEBAR (разделы слева - sleek themed 128px)
     local sidebar = Instance.new("Frame")
     sidebar.Name = "Sidebar"
     sidebar.Position = UDim2.new(0, 0, 0, 48)
-    sidebar.Size = UDim2.new(0, 132, 1, -48)
+    sidebar.Size = UDim2.new(0, 128, 1, -48)
     sidebar.BackgroundColor3 = Color3.fromRGB(16, 16, 22)
     sidebar.BorderSizePixel = 0
     sidebar.ZIndex = 5
     sidebar.Parent = main
     self.State.Sidebar = sidebar
 
+    local sideGrad = Instance.new("UIGradient")
+    sideGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 18, 28)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(16, 15, 23)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 12, 17))
+    })
+    sideGrad.Rotation = 90
+    sideGrad.Parent = sidebar
+
     local sidebarDivider = Instance.new("Frame")
     sidebarDivider.Name = "SidebarDivider"
-    sidebarDivider.Position = UDim2.new(0, 132, 0, 48)
+    sidebarDivider.Position = UDim2.new(0, 128, 0, 48)
     sidebarDivider.Size = UDim2.new(0, 1, 1, -48)
-    sidebarDivider.BackgroundColor3 = self.Theme.Border
+    sidebarDivider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     sidebarDivider.BorderSizePixel = 0
     sidebarDivider.ZIndex = 6
     sidebarDivider.Parent = main
+
+    local sideDivGrad = Instance.new("UIGradient")
+    sideDivGrad.Color = ColorSequence.new(self.Theme.Accent)
+    sideDivGrad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.2),
+        NumberSequenceKeypoint.new(0.35, 0.5),
+        NumberSequenceKeypoint.new(1, 0.95)
+    })
+    sideDivGrad.Rotation = 90
+    sideDivGrad.Parent = sidebarDivider
 
     local buttonsHolder = Instance.new("ScrollingFrame")
     buttonsHolder.Name = "ButtonsHolder"
@@ -10600,8 +11909,8 @@ function Hub:Init()
     -- RIGHT CONTENT AREA
     local contentArea = Instance.new("Frame")
     contentArea.Name = "ContentArea"
-    contentArea.Position = UDim2.new(0, 133, 0, 48)
-    contentArea.Size = UDim2.new(1, -133, 1, -48)
+    contentArea.Position = UDim2.new(0, 129, 0, 48)
+    contentArea.Size = UDim2.new(1, -129, 1, -48)
     contentArea.BackgroundTransparency = 1
     contentArea.ClipsDescendants = true
     contentArea.ZIndex = 4
@@ -10658,6 +11967,7 @@ function Hub:Init()
         table.insert(self.State.Connections, vpConn)
     end
 
+    self:ApplyWindowFX()
     self:PlayIntroAnimation()
 end
 
@@ -10674,6 +11984,34 @@ function Hub:PlayIntroAnimation()
             self:ToggleKeybindsHUD(true)
         end
         return
+    end
+
+    local introStyle = self.Config.Values.IntroStyle or "Classic"
+    local speed = math.clamp((self.Config.Values.IntroSpeed or 100) / 100, 0.4, 3)
+    if introStyle == "Quick" then
+        speed = speed * 1.8
+    elseif introStyle == "Slow Cinematic" then
+        speed = speed * 0.7
+    end
+    if introStyle == "Off" then
+        main.Visible = true
+        main.BackgroundTransparency = 0
+        if shadow then
+            shadow.Visible = true
+            shadow.ImageTransparency = 0.35
+        end
+        self.State.IsOpen = true
+        if self.Config.Toggles.Watermark and self.State.Watermark then
+            self:UpdateWatermarkValues()
+            self.State.Watermark.Visible = true
+        end
+        if self.Config.Toggles.KeybindsHUD and self.State.KeybindsHUD then
+            self:ToggleKeybindsHUD(true)
+        end
+        return
+    end
+    local function ITween(inst, props, dur, easeStyle, easeDir)
+        return self:Tween(inst, props, (dur or 0.25) / speed, easeStyle, easeDir)
     end
 
     local logoAsset = self:GetLogoAsset()
@@ -10814,9 +12152,18 @@ function Hub:PlayIntroAnimation()
     lblWelcome.Size = UDim2.new(1, -6, 0, 32)
     lblWelcome.BackgroundTransparency = 1
     lblWelcome.Font = Enum.Font.GothamBold
-    lblWelcome.Text = "Welcome"
+    local welcomeText = "Welcome"
+    if self.Config.Toggles.IntroShowName ~= false then
+        local lp = self.Services.Players.LocalPlayer
+        local nm = lp and ((lp.DisplayName ~= "" and lp.DisplayName) or lp.Name)
+        if nm then
+            welcomeText = "Welcome, " .. nm
+        end
+    end
+    lblWelcome.Text = welcomeText
     lblWelcome.TextColor3 = Color3.fromRGB(255, 255, 255)
-    lblWelcome.TextSize = 25
+    lblWelcome.TextSize = (#welcomeText > 20 and 15) or (#welcomeText > 14 and 19) or 25
+    lblWelcome.TextTruncate = Enum.TextTruncate.AtEnd
     lblWelcome.TextXAlignment = Enum.TextXAlignment.Left
     lblWelcome.TextTransparency = 1
     lblWelcome.ZIndex = 85
@@ -10833,85 +12180,85 @@ function Hub:PlayIntroAnimation()
     -- Animation sequence
     task.spawn(function()
         -- 1. Stage Card & Glow Fade In smoothly
-        self:Tween(stage, { BackgroundTransparency = 0.05 }, 0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        self:Tween(stageStroke, { Transparency = 0 }, 0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        self:Tween(glow, { ImageTransparency = 0.5 }, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        ITween(stage, { BackgroundTransparency = 0.05 }, 0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        ITween(stageStroke, { Transparency = 0 }, 0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        ITween(glow, { ImageTransparency = 0.5 }, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
         -- 2. Logo smooth scale-up into center
-        self:Tween(logo, {
+        ITween(logo, {
             Size = UDim2.new(0, 68, 0, 68),
             ImageTransparency = 0
         }, 0.55, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-        task.wait(0.65)
+        task.wait(0.65 / speed)
 
         -- 3. Simultaneous fluid expansion (Logo glides left while text unrolls to the right)
-        self:Tween(stage, {
+        ITween(stage, {
             Size = UDim2.new(0, 375, 0, 100)
         }, 0.65, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-        self:Tween(logo, {
+        ITween(logo, {
             Position = UDim2.new(0, 52, 0.5, 0)
         }, 0.65, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-        self:Tween(glow, {
+        ITween(glow, {
             Position = UDim2.new(0, 52, 0.5, 0)
         }, 0.65, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-        self:Tween(textContainer, {
+        ITween(textContainer, {
             Size = UDim2.new(0, 250, 0, 70)
         }, 0.65, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-        task.delay(0.2, function()
-            self:Tween(accentLine, { Size = UDim2.new(0, 230, 0, 2) }, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-            self:Tween(lblSubtitle, { TextTransparency = 0 }, 0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        task.delay(0.2 / speed, function()
+            ITween(accentLine, { Size = UDim2.new(0, 230, 0, 2) }, 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+            ITween(lblSubtitle, { TextTransparency = 0 }, 0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
         end)
 
-        task.wait(2.2) -- Display title
+        task.wait(2.2 / speed) -- Display title
 
         -- 4. Animate out the title & subtitle smoothly
-        self:Tween(titleHolder, { Position = UDim2.new(0, 6, 0, -8) }, 0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        self:Tween(lblDynamic, { TextTransparency = 1 }, 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        self:Tween(lblHub, { TextTransparency = 1 }, 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        self:Tween(accentLine, { Size = UDim2.new(0, 0, 0, 2), BackgroundTransparency = 1 }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        self:Tween(lblSubtitle, { Position = UDim2.new(0, 6, 0, 38), TextTransparency = 1 }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        ITween(titleHolder, { Position = UDim2.new(0, 6, 0, -8) }, 0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        ITween(lblDynamic, { TextTransparency = 1 }, 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        ITween(lblHub, { TextTransparency = 1 }, 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        ITween(accentLine, { Size = UDim2.new(0, 0, 0, 2), BackgroundTransparency = 1 }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        ITween(lblSubtitle, { Position = UDim2.new(0, 6, 0, 38), TextTransparency = 1 }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 
-        task.wait(0.22)
+        task.wait(0.22 / speed)
 
         -- 5. Animate in "Welcome" with graceful slide & fade
-        self:Tween(lblWelcome, {
+        ITween(lblWelcome, {
             Position = UDim2.new(0, 6, 0.5, 0),
             TextTransparency = 0
         }, 0.42, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        self:Tween(glow, { ImageTransparency = 0.35, Size = UDim2.new(0, 140, 0, 140) }, 0.42, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        ITween(glow, { ImageTransparency = 0.35, Size = UDim2.new(0, 140, 0, 140) }, 0.42, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-        task.wait(1.1) -- Display Welcome
+        task.wait(1.1 / speed) -- Display Welcome
 
         -- 6. Seamless continuous morph directly into the real Hub Window!
-        self:Tween(logo, { ImageTransparency = 1 }, 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        self:Tween(glow, { ImageTransparency = 1 }, 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        self:Tween(lblWelcome, {
+        ITween(logo, { ImageTransparency = 1 }, 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        ITween(glow, { ImageTransparency = 1 }, 0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        ITween(lblWelcome, {
             Position = UDim2.new(0, 6, 0.5, -8),
             TextTransparency = 1
         }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 
         local targetSize = self.State.WindowSize or UDim2.new(0, 630, 0, 480)
         local targetScale = self:GetMobileScale()
-        self:Tween(stageScale, { Scale = targetScale }, 0.55, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        local morphTween = self:Tween(stage, {
+        ITween(stageScale, { Scale = targetScale }, 0.55, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        local morphTween = ITween(stage, {
             Size = targetSize,
             BackgroundColor3 = self.Theme.MainBg
         }, 0.55, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-        task.delay(0.18, function()
+        task.delay(0.18 / speed, function()
             main.Visible = true
             main.BackgroundTransparency = 1
             if shadow then
                 shadow.Visible = true
                 shadow.ImageTransparency = 1
-                self:Tween(shadow, { ImageTransparency = 0.35 }, 0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+                ITween(shadow, { ImageTransparency = 0.35 }, 0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
             end
-            self:Tween(main, { BackgroundTransparency = 0 }, 0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+            ITween(main, { BackgroundTransparency = 0 }, 0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
         end)
 
         morphTween.Completed:Wait()
@@ -11036,8 +12383,209 @@ function Hub:CreateTabButton(navContainer, contentArea, def)
     }
 end
 
+function Hub:PlayTabTransition(page)
+    local area = page and page.Parent
+    if not (area and area:IsA("GuiObject")) then return end
+    local cover = area:FindFirstChild("TabFadeCover")
+    if not cover then
+        cover = Instance.new("Frame")
+        cover.Name = "TabFadeCover"
+        cover.Size = UDim2.new(1, 0, 1, -14)
+        cover.BorderSizePixel = 0
+        cover.Active = false
+        cover.ZIndex = 30
+        cover.Parent = area
+    end
+    cover.BackgroundColor3 = self.Theme.MainBg
+    cover.BackgroundTransparency = 0.1
+    cover.Visible = true
+    page.Position = UDim2.new(0, 0, 0, 10)
+    self:Tween(page, { Position = UDim2.new(0, 0, 0, 0) }, 0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    local tw = self:Tween(cover, { BackgroundTransparency = 1 }, 0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    tw.Completed:Connect(function()
+        if cover.Parent and cover.BackgroundTransparency >= 0.99 then
+            cover.Visible = false
+        end
+    end)
+end
+
+function Hub:SetupWindowFX()
+    local main = self.State.MainFrame
+    if not main or self.State.FX then return end
+    local fx = { Flakes = {}, Gradients = {} }
+    self.State.FX = fx
+    local rng = Random.new()
+
+    local layer = Instance.new("Frame")
+    layer.Name = "WindowFX"
+    layer.Position = UDim2.new(0, 6, 0, 6)
+    layer.Size = UDim2.new(1, -12, 1, -12)
+    layer.BackgroundTransparency = 1
+    layer.BorderSizePixel = 0
+    layer.ClipsDescendants = true
+    layer.ZIndex = 1
+    layer.Parent = main
+    fx.Layer = layer
+
+    local grid = Instance.new("Frame")
+    grid.Name = "Grid"
+    grid.Size = UDim2.new(1, 0, 1, 0)
+    grid.BackgroundTransparency = 1
+    grid.BorderSizePixel = 0
+    grid.ZIndex = 1
+    grid.Visible = false
+    grid.Parent = layer
+    fx.Grid = grid
+
+    local function addLine(vertical, frac)
+        local line = Instance.new("Frame")
+        line.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        line.BackgroundTransparency = 0.3
+        line.BorderSizePixel = 0
+        line.ZIndex = 1
+        if vertical then
+            line.Size = UDim2.new(0, 1, 1, 0)
+            line.Position = UDim2.new(frac, 0, 0, 0)
+        else
+            line.Size = UDim2.new(1, 0, 0, 1)
+            line.Position = UDim2.new(0, 0, frac, 0)
+        end
+        line.Parent = grid
+        local g = Instance.new("UIGradient")
+        g.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.9),
+            NumberSequenceKeypoint.new(0.5, 0.55),
+            NumberSequenceKeypoint.new(1, 0.9)
+        })
+        g.Rotation = vertical and 90 or 0
+        g.Offset = Vector2.new(-1, 0)
+        g.Parent = line
+        table.insert(fx.Gradients, g)
+    end
+    for i = 1, 12 do
+        addLine(true, i / 13)
+    end
+    for i = 1, 8 do
+        addLine(false, i / 9)
+    end
+
+    local snow = Instance.new("Frame")
+    snow.Name = "Snow"
+    snow.Size = UDim2.new(1, 0, 1, 0)
+    snow.BackgroundTransparency = 1
+    snow.BorderSizePixel = 0
+    snow.ZIndex = 2
+    snow.Visible = false
+    snow.Parent = layer
+    fx.Snow = snow
+
+    local function resetFlake(f, initial)
+        local depth = rng:NextNumber(0, 1)
+        f.x = rng:NextNumber(0, 1)
+        f.y = initial and rng:NextNumber(0, 1) or rng:NextNumber(-0.08, -0.02)
+        f.size = math.floor(2 + depth * 3 + 0.5)
+        f.speed = 0.04 + depth * 0.05
+        f.alpha = 0.2 + depth * 0.4
+        f.phase = rng:NextNumber(0, math.pi * 2)
+        f.sway = rng:NextNumber(0.004, 0.012)
+        f.obj.Size = UDim2.new(0, f.size, 0, f.size)
+    end
+    for i = 1, 26 do
+        local obj = Instance.new("Frame")
+        obj.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        obj.BorderSizePixel = 0
+        obj.AnchorPoint = Vector2.new(0.5, 0.5)
+        obj.ZIndex = 2
+        obj.Parent = snow
+        self:Corner(obj, 4)
+        local f = { obj = obj }
+        resetFlake(f, true)
+        fx.Flakes[i] = f
+    end
+
+    local conn = self.Services.RunService.Heartbeat:Connect(function(dt)
+        if not main.Parent or not main.Visible then return end
+        dt = math.min(dt, 0.1)
+        local t = os.clock()
+        if fx.Grid.Visible then
+            local scan = ((t * 0.18) % 2) - 1
+            local off = Vector2.new(scan, scan)
+            for _, g in ipairs(fx.Gradients) do
+                g.Offset = off
+            end
+        end
+        if fx.Snow.Visible then
+            for _, f in ipairs(fx.Flakes) do
+                f.y = f.y + f.speed * dt
+                f.x = f.x + (0.014 + math.sin(t * 0.6 + f.phase) * f.sway) * dt
+                if f.y > 1.04 then
+                    resetFlake(f, false)
+                end
+                if f.x > 1.05 then
+                    f.x = -0.05
+                elseif f.x < -0.05 then
+                    f.x = 1.05
+                end
+                local edge = math.clamp(math.min(f.y, 1 - f.y) / 0.14, 0, 1)
+                f.obj.Position = UDim2.new(f.x, 0, f.y, 0)
+                f.obj.BackgroundTransparency = 1 - f.alpha * edge
+            end
+        end
+        if fx.BorderGradient and fx.BorderGradient.Enabled then
+            fx.BorderGradient.Rotation = (t * 45) % 360
+        end
+    end)
+    fx.Conn = conn
+    table.insert(self.State.Connections, conn)
+end
+
+function Hub:ApplyWindowFX()
+    local mode = self.Config.Values.WindowEffect or "Snow + Grid"
+    local wantSnow = (mode == "Snow" or mode == "Snow + Grid")
+    local wantGrid = (mode == "Grid" or mode == "Snow + Grid")
+    local wantBorder = self.Config.Toggles.BorderLight == true
+    if not self.State.FX then
+        if not (wantSnow or wantGrid or wantBorder) then return end
+        self:SetupWindowFX()
+    end
+    local fx = self.State.FX
+    if not fx then return end
+    fx.Snow.Visible = wantSnow
+    fx.Grid.Visible = wantGrid
+    local stroke = self.State.MainStroke
+    if stroke then
+        if wantBorder then
+            if not fx.BorderGradient then
+                local g = Instance.new("UIGradient")
+                g.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+                g.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.85),
+                    NumberSequenceKeypoint.new(0.2, 0.85),
+                    NumberSequenceKeypoint.new(0.35, 0.35),
+                    NumberSequenceKeypoint.new(0.5, 0),
+                    NumberSequenceKeypoint.new(0.65, 0.35),
+                    NumberSequenceKeypoint.new(0.8, 0.85),
+                    NumberSequenceKeypoint.new(1, 0.85)
+                })
+                g.Parent = stroke
+                fx.BorderGradient = g
+            end
+            fx.BorderGradient.Enabled = true
+            stroke.Color = Color3.fromRGB(255, 255, 255)
+            stroke.Thickness = 2
+        else
+            if fx.BorderGradient then
+                fx.BorderGradient.Enabled = false
+            end
+            stroke.Color = self.Theme.Border
+            stroke.Thickness = 1
+        end
+    end
+end
+
 function Hub:SwitchTab(tabName)
     self:PlayUISound()
+    local prevTab = self.State.LastTab
     self.Config.ActiveTab = tabName
     if self.State.SearchBox then
         self.State.SearchBox.Text = ""
@@ -11048,6 +12596,9 @@ function Hub:SwitchTab(tabName)
         if page then
             if name == tabName then
                 page.Visible = true
+                if prevTab and prevTab ~= tabName and self.Config.Toggles.TabAnimations ~= false then
+                    self:PlayTabTransition(page)
+                end
                 if name == "Skins" and self.SkinSystem.RefreshUI then
                     task.defer(self.SkinSystem.RefreshUI)
                 end
@@ -11114,6 +12665,8 @@ function Hub:SwitchTab(tabName)
             end
         end
     end
+
+    self.State.LastTab = tabName
 
     if tabName == "Visuals" then
         if self.State.VisualSubTabs then
@@ -11212,13 +12765,13 @@ function Hub:CreateSection(parent, title, description)
     self:Corner(sec, 12)
     self:Stroke(sec, self.Theme.Border, 1)
     local secPad = Instance.new("UIPadding")
-    secPad.PaddingTop = UDim.new(0, 10)
-    secPad.PaddingBottom = UDim.new(0, 10)
-    secPad.PaddingLeft = UDim.new(0, 12)
-    secPad.PaddingRight = UDim.new(0, 12)
+    secPad.PaddingTop = UDim.new(0, 8)
+    secPad.PaddingBottom = UDim.new(0, 8)
+    secPad.PaddingLeft = UDim.new(0, 10)
+    secPad.PaddingRight = UDim.new(0, 10)
     secPad.Parent = sec
     local secLayout = Instance.new("UIListLayout")
-    secLayout.Padding = UDim.new(0, 8)
+    secLayout.Padding = UDim.new(0, 5)
     secLayout.SortOrder = Enum.SortOrder.LayoutOrder
     secLayout.Parent = sec
     if title and title ~= "" then
@@ -11336,6 +12889,11 @@ function Hub:ResolveToggleKey(title, configKey)
         ["Enable Vote Duplicator"] = "VoteDup",
         ["Watermark HUD"] = "Watermark",
         ["UI Click Sounds"] = "UISounds",
+        ["China Hat"] = "ChinaHat",
+        ["Character Aura"] = "Aura",
+        ["Aura"] = "Aura",
+        ["Custom Sky"] = "CustomSky",
+        ["Shaders"] = "Shaders",
     }
     if toggleMap[title] then
         return toggleMap[title]
@@ -11407,7 +12965,7 @@ function Hub:CreateToggle(section, title, defaultState, callback, configKey, has
     end
 
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 30)
+    row.Size = UDim2.new(1, 0, 0, 26)
     row.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
     row.ClipsDescendants = true
     row.Parent = section
@@ -11421,13 +12979,13 @@ function Hub:CreateToggle(section, title, defaultState, callback, configKey, has
     lbl.Font = Enum.Font.GothamMedium
     lbl.Text = title
     lbl.TextColor3 = defaultState and self.Theme.TextPrimary or self.Theme.TextDim
-    lbl.TextSize = 12
+    lbl.TextSize = 11
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = row
 
     local switch = Instance.new("TextButton")
-    switch.Size = UDim2.new(0, 36, 0, 18)
-    switch.Position = UDim2.new(1, -44, 0.5, -9)
+    switch.Size = UDim2.new(0, 32, 0, 15)
+    switch.Position = UDim2.new(1, -40, 0.5, -8)
     switch.BackgroundColor3 = defaultState and self.Theme.Accent or Color3.fromRGB(34, 34, 44)
     switch.Text = ""
     switch.AutoButtonColor = false
@@ -11484,7 +13042,8 @@ function Hub:CreateToggle(section, title, defaultState, callback, configKey, has
 
         local gearIcon = Instance.new("ImageLabel")
         gearIcon.Size = UDim2.new(0, 12, 0, 12)
-        gearIcon.Position = UDim2.new(0.5, -6, 0.5, -6)
+        gearIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+        gearIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
         gearIcon.BackgroundTransparency = 1
         gearIcon.Image = Icons.Settings or "rbxassetid://10734950309"
         gearIcon.ImageColor3 = Color3.fromRGB(150, 155, 170)
@@ -11494,11 +13053,17 @@ function Hub:CreateToggle(section, title, defaultState, callback, configKey, has
             self:Tween(gearBtn, { BackgroundColor3 = Color3.fromRGB(32, 34, 46) }, 0.15)
             self:Tween(gearStroke, { Color = Color3.fromRGB(55, 55, 75) }, 0.15)
             self:Tween(gearIcon, { ImageColor3 = Color3.fromRGB(240, 240, 255) }, 0.15)
+            if self.State.ActiveGearIcon ~= gearIcon then
+                self:Tween(gearIcon, { Rotation = 90 }, 0.25)
+            end
         end)
         gearBtn.MouseLeave:Connect(function()
             self:Tween(gearBtn, { BackgroundColor3 = Color3.fromRGB(24, 24, 32) }, 0.15)
             self:Tween(gearStroke, { Color = Color3.fromRGB(36, 36, 48) }, 0.15)
             self:Tween(gearIcon, { ImageColor3 = Color3.fromRGB(150, 155, 170) }, 0.15)
+            if self.State.ActiveGearIcon ~= gearIcon then
+                self:Tween(gearIcon, { Rotation = 0 }, 0.25)
+            end
         end)
 
         gearBtn.MouseButton1Click:Connect(function()
@@ -11507,6 +13072,10 @@ function Hub:CreateToggle(section, title, defaultState, callback, configKey, has
                 gearCallback(gearBtn)
             else
                 self:OpenKeybindPopup(regKey, title, gearBtn)
+            end
+            if self.State.KeybindPopup then
+                self.State.ActiveGearIcon = gearIcon
+                self:Tween(gearIcon, { Rotation = 180 }, 0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
             end
         end)
     end
@@ -11531,7 +13100,7 @@ function Hub:CreateToggle(section, title, defaultState, callback, configKey, has
 end
 function Hub:CreateDropdown(section, title, options, default, callback, configKey)
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 30)
+    row.Size = UDim2.new(1, 0, 0, 26)
     row.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
     row.Parent = section
     self:Corner(row, 6)
@@ -11543,12 +13112,12 @@ function Hub:CreateDropdown(section, title, options, default, callback, configKe
     lbl.Font = Enum.Font.GothamMedium
     lbl.Text = title
     lbl.TextColor3 = self.Theme.TextDim
-    lbl.TextSize = 12
+    lbl.TextSize = 11
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = row
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 105, 0, 20)
-    btn.Position = UDim2.new(1, -112, 0.5, -10)
+    btn.Size = UDim2.new(0, 100, 0, 18)
+    btn.Position = UDim2.new(1, -108, 0.5, -9)
     btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
     btn.Font = Enum.Font.GothamBold
     btn.Text = default or "Select"
@@ -11621,24 +13190,24 @@ function Hub:CreateSlider(section, title, minVal, maxVal, defaultVal, suffix, ca
     defaultVal = tonumber(defaultVal) or minVal
 
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 40)
+    row.Size = UDim2.new(1, 0, 0, 32)
     row.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
     row.Parent = section
     self:Corner(row, 6)
     self:Stroke(row, Color3.fromRGB(32, 32, 42), 1)
     local lbl = Instance.new("TextLabel")
-    lbl.Position = UDim2.new(0, 10, 0, 3)
-    lbl.Size = UDim2.new(0.65, 0, 0, 16)
+    lbl.Position = UDim2.new(0, 10, 0, 2)
+    lbl.Size = UDim2.new(0.65, 0, 0, 15)
     lbl.BackgroundTransparency = 1
     lbl.Font = Enum.Font.GothamMedium
     lbl.Text = title
     lbl.TextColor3 = self.Theme.TextDim
-    lbl.TextSize = 12
+    lbl.TextSize = 11
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = row
     local badge = Instance.new("Frame")
-    badge.Size = UDim2.new(0, 48, 0, 16)
-    badge.Position = UDim2.new(1, -56, 0, 3)
+    badge.Size = UDim2.new(0, 44, 0, 14)
+    badge.Position = UDim2.new(1, -52, 0, 2)
     badge.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
     badge.Parent = row
     self:Corner(badge, 4)
@@ -11653,8 +13222,8 @@ function Hub:CreateSlider(section, title, minVal, maxVal, defaultVal, suffix, ca
     valLbl.TextXAlignment = Enum.TextXAlignment.Center
     valLbl.Parent = badge
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1, -20, 0, 6)
-    bar.Position = UDim2.new(0, 10, 0, 25)
+    bar.Size = UDim2.new(1, -20, 0, 4)
+    bar.Position = UDim2.new(0, 10, 0, 20)
     bar.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
     bar.Parent = row
     self:Corner(bar, 3)
@@ -11726,12 +13295,12 @@ function Hub:CreateSlider(section, title, minVal, maxVal, defaultVal, suffix, ca
 end
 function Hub:CreateButton(section, text, callback)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 30)
+    btn.Size = UDim2.new(1, 0, 0, 26)
     btn.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
     btn.Text = text
     btn.Font = Enum.Font.GothamMedium
     btn.TextColor3 = self.Theme.TextPrimary
-    btn.TextSize = 12
+    btn.TextSize = 11
     btn.AutoButtonColor = false
     btn.Parent = section
     self:Corner(btn, 6)
@@ -12049,6 +13618,20 @@ function Hub:BuildVisualsTab(container)
         self.Config.Toggles.ChinaHat = v
         self:UpdateChinaHat()
     end)
+    self:CreateToggle(previewCard, "Character Aura", self.Config.Toggles.Aura, function(v)
+        self.Config.Toggles.Aura = v
+        if v then
+            self:ApplyVisualAura()
+        else
+            self:ClearVisualAura()
+        end
+    end)
+    self:CreateDropdown(previewCard, "Aura Preset", { "angel", "starlight", "heavenly", "ribbon", "sakura", "wind", "flow", "star" }, self.Config.Values.AuraType or "angel", function(v)
+        self.Config.Values.AuraType = v
+        if self.Config.Toggles.Aura then
+            self:ApplyVisualAura()
+        end
+    end)
     self:CreateToggle(previewCard, "Jump Circles", self.Config.Toggles.JumpCircles, function(v)
         self.Config.Toggles.JumpCircles = v
     end)
@@ -12076,8 +13659,37 @@ function Hub:BuildVisualsTab(container)
             self:DisableXRay()
         end
     end)
+    self:CreateToggle(worldSec, "Custom Sky", self.Config.Toggles.CustomSky, function(v)
+        self.Config.Toggles.CustomSky = v
+        if v then
+            self:ApplySkybox(self.Config.Values.SkyboxPreset or "Jungle")
+        else
+            self:RestoreSkybox()
+        end
+    end)
+    self:CreateDropdown(worldSec, "Skybox Preset", { "Purple", "Red night", "Blossom", "Jungle", "Foggy", "Galaxy", "Anime", "Minecraft" }, self.Config.Values.SkyboxPreset or "Jungle", function(v)
+        self.Config.Values.SkyboxPreset = v
+        if self.Config.Toggles.CustomSky then
+            self:ApplySkybox(v)
+        end
+    end)
 
     local envSec = self:CreateSection(rightColWorld, "Environment")
+    self:CreateToggle(envSec, "Shaders", self.Config.Toggles.Shaders, function(v)
+        self.Config.Toggles.Shaders = v
+        if v then
+            self:ApplyShader(self.Config.Values.ShaderPreset or "morning")
+            self:StartShaderLoop()
+        else
+            self:DisableShader()
+        end
+    end)
+    self:CreateDropdown(envSec, "Shader Preset", { "morning", "midday", "evening", "night" }, self.Config.Values.ShaderPreset or "morning", function(v)
+        self.Config.Values.ShaderPreset = v
+        if self.Config.Toggles.Shaders then
+            self:ApplyShader(v)
+        end
+    end)
     self:CreateSlider(envSec, "X-Ray Transparency", 30, 90, self.Config.Values.XRayTransparency, "%", function(v)
         self.Config.Values.XRayTransparency = v
         if self.Config.Toggles.XRay then
@@ -12759,6 +14371,14 @@ function Hub:BuildSkinsTab(container)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.Parent = container
 
+    -- Scroll padding: ensures cards at the wall edges are never clipped
+    local scrollPad = Instance.new("UIPadding")
+    scrollPad.PaddingLeft = UDim.new(0, 5)
+    scrollPad.PaddingRight = UDim.new(0, 5)
+    scrollPad.PaddingTop = UDim.new(0, 5)
+    scrollPad.PaddingBottom = UDim.new(0, 10)
+    scrollPad.Parent = scroll
+
     local grid = Instance.new("UIGridLayout")
     grid.SortOrder = Enum.SortOrder.LayoutOrder
     grid.CellSize = UDim2.new(0, 85, 0, 105)
@@ -12771,12 +14391,12 @@ function Hub:BuildSkinsTab(container)
         if w < 100 then
             w = (container and container.AbsoluteSize.X > 100 and container.AbsoluteSize.X) or 480
         end
-        local pad = 8
-        local cols = 5
-        if w < 480 then cols = 4 end
-        local totalPad = (cols - 1) * pad
-        local cellW = math.floor((w - totalPad - 2) / cols)
-        local cellH = math.floor(cellW * 1.22)
+        local pad = 6
+        local cols = 6
+        if w < 460 then cols = 5 end
+        local totalPad = ((cols - 1) * pad) + 12
+        local cellW = math.floor((w - totalPad) / cols)
+        local cellH = math.floor(cellW * 1.16)
         grid.CellSize = UDim2.new(0, cellW, 0, cellH)
         grid.CellPadding = UDim2.new(0, pad, 0, pad)
     end
@@ -12829,37 +14449,146 @@ function Hub:BuildSkinsTab(container)
             local sName = rec.name or (rec.meta and rec.meta.ItemName) or "Unknown"
             if filter == "" or sName:lower():find(filter, 1, true) then
                 local isEquipped = (curSlot == "Gun" and self.SkinSystem.CurrentGun == sName) or (curSlot == "Knife" and self.SkinSystem.CurrentKnife == sName)
+                
+                -- Determine item rarity and highlight color
+                local rarity = (rec.meta and rec.meta.Rarity) or ""
+                local isChroma = rec.isChroma or (rec.meta and rec.meta.Chroma) or sName:lower():find("chroma")
+                local itemColor = self.Theme.Accent
+                if isChroma then
+                    itemColor = Color3.fromRGB(255, 120, 220)
+                elseif rarity:lower() == "ancient" then
+                    itemColor = Color3.fromRGB(80, 225, 255)
+                elseif rarity:lower() == "godly" then
+                    itemColor = Color3.fromRGB(255, 85, 145)
+                elseif rarity:lower() == "vintage" then
+                    itemColor = Color3.fromRGB(240, 195, 75)
+                elseif rarity:lower() == "legendary" then
+                    itemColor = Color3.fromRGB(255, 140, 50)
+                end
+
                 local card = Instance.new("TextButton")
                 card.Name = "Skin_" .. sName
-                card.BackgroundColor3 = isEquipped and Color3.fromRGB(30, 25, 45) or Color3.fromRGB(16, 16, 22)
+                card.BackgroundColor3 = isEquipped and Color3.fromRGB(32, 26, 48) or Color3.fromRGB(18, 18, 25)
                 card.Text = ""
                 card.AutoButtonColor = false
                 card.LayoutOrder = idx
                 card.Parent = scroll
                 self:Corner(card, 6)
-                local strk = self:Stroke(card, isEquipped and self.Theme.Accent or Color3.fromRGB(30, 30, 40), isEquipped and 2 or 1)
-                
-                local img = Instance.new("ImageLabel")
-                img.Size = UDim2.new(1, -10, 1, -40)
-                img.Position = UDim2.new(0, 5, 0, 5)
-                img.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+
+                -- Card outline / stroke: high-contrast visible border
+                local cardStroke = Instance.new("UIStroke")
+                cardStroke.Name = "CardStroke"
+                cardStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                cardStroke.Color = isEquipped and itemColor or Color3.fromRGB(44, 44, 58)
+                cardStroke.Thickness = isEquipped and 1.8 or 1
+                cardStroke.Transparency = isEquipped and 0 or 0.2
+                cardStroke.Parent = card
+
+                -- Icon container Frame with explicit outline & subtle background
+                local imgBox = Instance.new("Frame")
+                imgBox.Name = "IconBox"
+                imgBox.Size = UDim2.new(1, -8, 1, -38)
+                imgBox.Position = UDim2.new(0, 4, 0, 4)
+                imgBox.BackgroundColor3 = isEquipped and Color3.fromRGB(25, 21, 38) or Color3.fromRGB(22, 22, 30)
+                imgBox.BorderSizePixel = 0
+                imgBox.ClipsDescendants = true
+                imgBox.Parent = card
+                self:Corner(imgBox, 5)
+
+                -- Icon box outline (обводка иконки скина)
+                local imgBoxStroke = Instance.new("UIStroke")
+                imgBoxStroke.Name = "IconBoxStroke"
+                imgBoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                imgBoxStroke.Color = isEquipped and itemColor or Color3.fromRGB(48, 48, 64)
+                imgBoxStroke.Thickness = isEquipped and 1.5 or 1
+                imgBoxStroke.Transparency = isEquipped and 0 or 0.25
+                imgBoxStroke.Parent = imgBox
+
+                -- Soft radial glow backdrop inside icon box (makes dark weapons pop)
+                local glowBg = Instance.new("ImageLabel")
+                glowBg.Name = "GlowBackdrop"
+                glowBg.AnchorPoint = Vector2.new(0.5, 0.5)
+                glowBg.Position = UDim2.new(0.5, 0, 0.5, 0)
+                glowBg.Size = UDim2.new(1.1, 0, 1.1, 0)
+                glowBg.BackgroundTransparency = 1
+                glowBg.Image = "rbxassetid://5028857084"
+                glowBg.ImageColor3 = isEquipped and itemColor or Color3.fromRGB(70, 60, 100)
+                glowBg.ImageTransparency = isEquipped and 0.45 or 0.82
+                glowBg.ZIndex = 1
+                glowBg.Parent = imgBox
+
+                -- Skin image (weapon icon)
                 local skinImg = self:GetSkinImage(rec) or Icons.Skins
+
+                -- Drop-shadow silhouette for weapon icon
+                local shadowImg = Instance.new("ImageLabel")
+                shadowImg.Name = "WeaponShadow"
+                shadowImg.AnchorPoint = Vector2.new(0.5, 0.5)
+                shadowImg.Position = UDim2.new(0.5, 1, 0.5, 1)
+                shadowImg.Size = UDim2.new(0.88, 0, 0.88, 0)
+                shadowImg.BackgroundTransparency = 1
+                shadowImg.Image = skinImg
+                shadowImg.ScaleType = Enum.ScaleType.Fit
+                shadowImg.ImageColor3 = Color3.fromRGB(0, 0, 0)
+                shadowImg.ImageTransparency = 0.45
+                shadowImg.ZIndex = 2
+                shadowImg.Parent = imgBox
+
+                -- Main weapon image
+                local img = Instance.new("ImageLabel")
+                img.Name = "WeaponIcon"
+                img.AnchorPoint = Vector2.new(0.5, 0.5)
+                img.Position = UDim2.new(0.5, 0, 0.5, 0)
+                img.Size = UDim2.new(0.88, 0, 0.88, 0)
+                img.BackgroundTransparency = 1
                 img.Image = skinImg
                 img.ScaleType = Enum.ScaleType.Fit
-                img.Parent = card
-                self:Corner(img, 4)
-                
+                img.ZIndex = 3
+                img.Parent = imgBox
+
+                -- Equipped corner indicator badge
+                if isEquipped then
+                    local eqBadge = Instance.new("Frame")
+                    eqBadge.Name = "EquippedBadge"
+                    eqBadge.Size = UDim2.new(0, 7, 0, 7)
+                    eqBadge.Position = UDim2.new(1, -9, 0, 4)
+                    eqBadge.BackgroundColor3 = itemColor
+                    eqBadge.BorderSizePixel = 0
+                    eqBadge.ZIndex = 5
+                    eqBadge.Parent = card
+                    self:Corner(eqBadge, 4)
+                end
+
+                -- Title label
                 local lbl = Instance.new("TextLabel")
-                lbl.Size = UDim2.new(1, -8, 0, 30)
-                lbl.Position = UDim2.new(0, 4, 1, -34)
+                lbl.Size = UDim2.new(1, -8, 0, 28)
+                lbl.Position = UDim2.new(0, 4, 1, -31)
                 lbl.BackgroundTransparency = 1
-                lbl.Font = Enum.Font.GothamMedium
+                lbl.Font = isEquipped and Enum.Font.GothamBold or Enum.Font.GothamMedium
                 lbl.Text = sName
                 lbl.TextColor3 = isEquipped and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 195)
                 lbl.TextSize = 10
                 lbl.TextTruncate = Enum.TextTruncate.AtEnd
                 lbl.TextWrapped = true
                 lbl.Parent = card
+
+                -- Hover effects
+                card.MouseEnter:Connect(function()
+                    if not isEquipped then
+                        self:Tween(card, { BackgroundColor3 = Color3.fromRGB(24, 24, 34) }, 0.15)
+                        self:Tween(cardStroke, { Color = Color3.fromRGB(120, 100, 180), Transparency = 0 }, 0.15)
+                        self:Tween(imgBoxStroke, { Color = Color3.fromRGB(130, 110, 190), Transparency = 0 }, 0.15)
+                        self:Tween(glowBg, { ImageTransparency = 0.6 }, 0.15)
+                    end
+                end)
+                card.MouseLeave:Connect(function()
+                    if not isEquipped then
+                        self:Tween(card, { BackgroundColor3 = Color3.fromRGB(18, 18, 25) }, 0.15)
+                        self:Tween(cardStroke, { Color = Color3.fromRGB(44, 44, 58), Transparency = 0.2 }, 0.15)
+                        self:Tween(imgBoxStroke, { Color = Color3.fromRGB(48, 48, 64), Transparency = 0.25 }, 0.15)
+                        self:Tween(glowBg, { ImageTransparency = 0.82 }, 0.15)
+                    end
+                end)
 
                 card.MouseButton1Click:Connect(function()
                     if isEquipped then
@@ -14359,6 +16088,18 @@ function Hub:BuildConfigTab(container)
     self:CreateToggle(menuSec, "Keybinds HUD", self.Config.Toggles.KeybindsHUD, function(v)
         self:ToggleKeybindsHUD(v)
     end, "KeybindsHUD", false)
+    self:CreateDropdown(menuSec, "Window Effect", { "Off", "Snow", "Grid", "Snow + Grid" }, self.Config.Values.WindowEffect or "Snow + Grid", function(v)
+        self.Config.Values.WindowEffect = v
+        self:ApplyWindowFX()
+    end, "WindowEffect")
+    self:CreateToggle(menuSec, "Border Light", self.Config.Toggles.BorderLight, function(v)
+        self.Config.Toggles.BorderLight = v
+        self:ApplyWindowFX()
+    end, "BorderLight", false)
+    self:CreateToggle(menuSec, "Tab Animations", self.Config.Toggles.TabAnimations, function(v)
+        self.Config.Toggles.TabAnimations = v
+    end, "TabAnimations", false)
+
     self:CreateKeybind(menuSec, "Toggle Menu Key", self.Config.MenuKey, function(key)
         self.Config.MenuKey = key
         if self.State.TopBarKeybindBtn and key and key.Name then
@@ -14406,6 +16147,20 @@ function Hub:CloseKeybindPopup()
     self.State.IsListeningPopup = false
     self.Config.IsListeningKeybind = nil
 
+    local gi = self.State.ActiveGearIcon
+    if gi then
+        self.State.ActiveGearIcon = nil
+        pcall(function() self:Tween(gi, { Rotation = 0 }, 0.25) end)
+    end
+    local dim = self.State.PopupDim
+    if dim then
+        self.State.PopupDim = nil
+        local dtw = self:Tween(dim, { BackgroundTransparency = 1 }, 0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        dtw.Completed:Connect(function()
+            pcall(function() dim:Destroy() end)
+        end)
+    end
+
     if self.State.KeybindPopupBackdrop then
         pcall(function() self.State.KeybindPopupBackdrop:Destroy() end)
         self.State.KeybindPopupBackdrop = nil
@@ -14413,6 +16168,10 @@ function Hub:CloseKeybindPopup()
     if self.State.KeybindPopup then
         local popup = self.State.KeybindPopup
         self.State.KeybindPopup = nil
+        local ps = popup:FindFirstChild("PopupScale")
+        if ps then
+            self:Tween(ps, { Scale = 0.9 }, 0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        end
         local tw = self:Tween(popup, { Position = UDim2.new(popup.Position.X.Scale, popup.Position.X.Offset, popup.Position.Y.Scale, popup.Position.Y.Offset - 6), BackgroundTransparency = 1 }, 0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         tw.Completed:Connect(function()
             pcall(function() popup:Destroy() end)
@@ -14437,6 +16196,22 @@ function Hub:OpenKeybindPopup(regKey, title, anchorObj)
     backdrop.Parent = screen
     self.State.KeybindPopupBackdrop = backdrop
 
+    local mainFrame = self.State.MainFrame
+    if mainFrame then
+        local dimFrame = Instance.new("Frame")
+        dimFrame.Name = "PopupDim"
+        dimFrame.Size = UDim2.new(1, 0, 1, 0)
+        dimFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        dimFrame.BackgroundTransparency = 1
+        dimFrame.BorderSizePixel = 0
+        dimFrame.Active = false
+        dimFrame.ZIndex = 60
+        dimFrame.Parent = mainFrame
+        self:Corner(dimFrame, 14)
+        self.State.PopupDim = dimFrame
+        self:Tween(dimFrame, { BackgroundTransparency = 0.55 }, 0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    end
+
     backdrop.MouseButton1Click:Connect(function()
         self:PlayUISound()
         self:CloseKeybindPopup()
@@ -14451,6 +16226,11 @@ function Hub:OpenKeybindPopup(regKey, title, anchorObj)
     popup.ZIndex = 100
     popup.Parent = screen
     self.State.KeybindPopup = popup
+    popup.AnchorPoint = Vector2.new(0.5, 0.5)
+    local popScale = Instance.new("UIScale")
+    popScale.Name = "PopupScale"
+    popScale.Scale = 0.8
+    popScale.Parent = popup
 
     self:Corner(popup, 8)
     self:Stroke(popup, Color3.fromRGB(38, 42, 54), 1)
@@ -14463,14 +16243,23 @@ function Hub:OpenKeybindPopup(regKey, title, anchorObj)
     header.ZIndex = 101
     header.Parent = popup
 
+    local hdrIcon = Instance.new("ImageLabel")
+    hdrIcon.Size = UDim2.new(0, 12, 0, 12)
+    hdrIcon.Position = UDim2.new(0, 9, 0.5, -6)
+    hdrIcon.BackgroundTransparency = 1
+    hdrIcon.Image = Icons.Settings or "rbxassetid://10734950309"
+    hdrIcon.ImageColor3 = self.Theme.Accent
+    hdrIcon.ZIndex = 102
+    hdrIcon.Parent = header
+
     local titleLbl = Instance.new("TextLabel")
-    titleLbl.Position = UDim2.new(0, 8, 0, 0)
-    titleLbl.Size = UDim2.new(1, -32, 1, 0)
+    titleLbl.Position = UDim2.new(0, 26, 0, 0)
+    titleLbl.Size = UDim2.new(1, -50, 1, 0)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Font = Enum.Font.GothamBold
     titleLbl.Text = title
     titleLbl.TextColor3 = Color3.fromRGB(245, 245, 255)
-    titleLbl.TextSize = 10
+    titleLbl.TextSize = 11
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
     titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
     titleLbl.ZIndex = 102
@@ -14722,9 +16511,11 @@ function Hub:OpenKeybindPopup(regKey, title, anchorObj)
     local targetY = math.clamp(anchorPos.Y - 10, 12, math.max(12, vpSize.Y - 135))
 
     -- Crisp Slide-In Animation (NO UIScale, keeping text crisp and stationary!)
-    popup.Position = UDim2.new(0, targetX, 0, targetY - 6)
+    local cx, cy = targetX + 75, targetY + 62
+    popup.Position = UDim2.new(0, cx, 0, cy - 6)
     popup.BackgroundTransparency = 1
-    self:Tween(popup, { Position = UDim2.new(0, targetX, 0, targetY), BackgroundTransparency = 0 }, 0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    self:Tween(popup, { Position = UDim2.new(0, cx, 0, cy), BackgroundTransparency = 0 }, 0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    self:Tween(popScale, { Scale = 1 }, 0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 end
 
 function Hub:ToggleKeybindsHUD(state)
