@@ -961,53 +961,136 @@ end
 function Hub:ApplyFastLoad()
     if not self.Config.FastLoad then return end
 
-    pcall(function()
-        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    local function dismissCutscenes(pg)
         if not pg then return end
 
-        local sc = pg:FindFirstChild("SkipCutscene")
-        if sc and sc:FindFirstChild("Skip") then
-            if firesignal then
-                firesignal(sc.Skip.Activated)
-            else
-                for _, c in ipairs(getconnections(sc.Skip.Activated)) do c:Fire() end
+        -- 1. Remove native loading screens safely
+        pcall(function()
+            game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
+            local rf = game:GetService("ReplicatedFirst")
+            if rf:FindFirstChild("TeleportUI") then
+                rf.TeleportUI.Enabled = false
             end
+        end)
+
+        -- 2. SkipCutscene button (ONLY fire if enabled and visible to prevent click sound spam!)
+        local sc = pg:FindFirstChild("SkipCutscene")
+        if sc and sc.Enabled and sc:FindFirstChild("Skip") and sc.Skip.Visible then
+            pcall(function()
+                if firesignal then
+                    firesignal(sc.Skip.Activated)
+                else
+                    for _, c in ipairs(getconnections(sc.Skip.Activated)) do c:Fire() end
+                end
+            end)
+            pcall(function() sc.Enabled = false end)
         end
 
+        -- 3. Cutscene with Skip button (ONLY fire if enabled and visible!)
+        local cs = pg:FindFirstChild("Cutscene")
+        if cs and cs.Enabled and cs:FindFirstChild("Skip") and cs.Skip.Visible then
+            pcall(function()
+                if firesignal then
+                    firesignal(cs.Skip.Activated)
+                else
+                    for _, c in ipairs(getconnections(cs.Skip.Activated)) do c:Fire() end
+                end
+            end)
+            pcall(function() cs.Enabled = false end)
+        end
+
+        -- 4. CutsceneOutside & CutsceneWaiting
         local co = pg:FindFirstChild("CutsceneOutside")
-        if co then co.Enabled = false end
+        if co and co.Enabled then co.Enabled = false end
+        local cw = pg:FindFirstChild("CutsceneWaiting")
+        if cw and cw.Enabled then cw.Enabled = false end
 
+        -- 5. Tutorial & Popups
+        local tsp = pg:FindFirstChild("TutorialSkipPrompt")
+        if tsp and tsp.Enabled then tsp.Enabled = false end
         local dlg = pg:FindFirstChild("Dialogue")
-        if dlg then dlg.Enabled = false end
+        if dlg and dlg.Enabled then dlg.Enabled = false end
+        local wb = pg:FindFirstChild("WelcomeBack")
+        if wb and wb.Enabled then wb.Enabled = false end
+        local nwb = pg:FindFirstChild("NewWelcomeBack")
+        if nwb and nwb.Enabled then nwb.Enabled = false end
+        local rtp = pg:FindFirstChild("RegionalTournamentPopups")
+        if rtp and rtp.Enabled then rtp.Enabled = false end
 
-        local isb = pg:FindFirstChild("IndexScreenBlackout")
-        if isb and not self.State.IsSearchingSellers then isb.Enabled = false end
-
+        -- 6. Blackouts (NEVER touch IndexScreenBlackout while searching sellers!)
+        if not self.State.IsSearchingSellers then
+            local isb = pg:FindFirstChild("IndexScreenBlackout")
+            if isb and isb.Enabled then
+                local index = pg:FindFirstChild("Index")
+                if not index or not index.Enabled then
+                    isb.Enabled = false
+                end
+            end
+        end
         local rpb = pg:FindFirstChild("RobloxPurchaseScreenBlackout")
-        if rpb then rpb.Enabled = false end
+        if rpb and rpb.Enabled then rpb.Enabled = false end
+
+        -- 7. Restore Camera if frozen in cinematic/scriptable
+        pcall(function()
+            local cam = Hub.Services.Workspace.CurrentCamera
+            if cam and cam.CameraType == Enum.CameraType.Scriptable and LocalPlayer.Character then
+                local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    cam.CameraType = Enum.CameraType.Custom
+                    cam.CameraSubject = hum
+                end
+            end
+        end)
+
+        -- 8. Disable heavy post-processing effects for instant performance
+        pcall(function()
+            local lighting = Hub.Services.Lighting
+            lighting.GlobalShadows = false
+            for _, eff in ipairs(lighting:GetChildren()) do
+                if eff:IsA("BlurEffect") or eff:IsA("BloomEffect") or eff:IsA("DepthOfFieldEffect") or eff:IsA("ColorCorrectionEffect") then
+                    eff.Enabled = false
+                end
+            end
+        end)
+    end
+
+    -- Run immediate pass
+    pcall(function()
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        dismissCutscenes(pg)
     end)
 
+    -- Persistent Watcher: fast pass during first 8s + ChildAdded hook
     if not self.State.FastLoadWatcher then
         self.State.FastLoadWatcher = true
+
+        -- Hook PlayerGui.ChildAdded
+        pcall(function()
+            local pg = LocalPlayer:FindFirstChild("PlayerGui")
+            if pg then
+                local conn = pg.ChildAdded:Connect(function(child)
+                    if self.Config.FastLoad then
+                        task.defer(function()
+                            dismissCutscenes(pg)
+                        end)
+                    end
+                end)
+                table.insert(self.State.Connections, conn)
+            end
+        end)
+
+        -- Polling loop (slow and silent after initial 8 seconds)
         task.spawn(function()
-            while task.wait(1.5) do
+            local startTime = tick()
+            while true do
+                local elapsed = tick() - startTime
+                local waitTime = (elapsed < 8) and 0.25 or 2.0
+                task.wait(waitTime)
+
                 if self.Config.FastLoad then
                     pcall(function()
                         local pg = LocalPlayer:FindFirstChild("PlayerGui")
-                        if not pg then return end
-
-                        local sc = pg:FindFirstChild("SkipCutscene")
-                        if sc and sc.Enabled and sc:FindFirstChild("Skip") then
-                            if firesignal then firesignal(sc.Skip.Activated) end
-                        end
-
-                        local co = pg:FindFirstChild("CutsceneOutside")
-                        if co and co.Enabled then co.Enabled = false end
-
-                        local isb = pg:FindFirstChild("IndexScreenBlackout")
-                        if isb and isb.Enabled and not self.State.IsSearchingSellers then
-                            isb.Enabled = false
-                        end
+                        dismissCutscenes(pg)
                     end)
                 end
             end
@@ -1015,25 +1098,286 @@ function Hub:ApplyFastLoad()
     end
 end
 
+-- Helper: Prominent Top Banner Notification on Server Join for Watchlist items
+function Hub:ShowJoinServerBanner()
+    task.spawn(function()
+        pcall(function()
+            local gethui = gethui or function() return game:GetService("CoreGui") end
+            local parent = gethui()
+            if not parent then return end
+
+            local old = parent:FindFirstChild("DynamicPlazaTopBanner")
+            if old then old:Destroy() end
+
+            local gui = Instance.new("ScreenGui")
+            gui.Name = "DynamicPlazaTopBanner"
+            gui.ResetOnSpawn = false
+            gui.DisplayOrder = 9999
+            gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            gui.Parent = parent
+
+            local banner = Instance.new("Frame")
+            banner.Name = "Banner"
+            banner.Size = UDim2.new(0, 540, 0, 50)
+            banner.Position = UDim2.new(0.5, 0, 0, -65)
+            banner.AnchorPoint = Vector2.new(0.5, 0)
+            banner.BackgroundColor3 = Color3.fromRGB(15, 17, 24)
+            banner.BackgroundTransparency = 0.08
+            banner.BorderSizePixel = 0
+            banner.Parent = gui
+
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 8)
+            corner.Parent = banner
+
+            local stroke = Instance.new("UIStroke")
+            stroke.Color = Color3.fromRGB(80, 140, 255)
+            stroke.Thickness = 1.5
+            stroke.Parent = banner
+
+            local title = Instance.new("TextLabel")
+            title.Name = "Title"
+            title.Size = UDim2.new(1, -40, 0, 20)
+            title.Position = UDim2.new(0, 12, 0, 6)
+            title.BackgroundTransparency = 1
+            title.Font = Enum.Font.GothamBold
+            title.Text = "⏳ ТОРГОВАЯ ПЛОЩАДКА: ЗАГРУЗКА ВИТРИН..."
+            title.TextColor3 = Color3.fromRGB(120, 180, 255)
+            title.TextSize = 12
+            title.TextXAlignment = Enum.TextXAlignment.Left
+            title.Parent = banner
+
+            local content = Instance.new("TextLabel")
+            content.Name = "Content"
+            content.Size = UDim2.new(1, -24, 0, 20)
+            content.Position = UDim2.new(0, 12, 0, 26)
+            content.BackgroundTransparency = 1
+            content.Font = Enum.Font.GothamMedium
+            content.Text = "Ожидание полной репликации витрин сервера..."
+            content.TextColor3 = Color3.fromRGB(190, 195, 210)
+            content.TextSize = 11.5
+            content.TextXAlignment = Enum.TextXAlignment.Left
+            content.Parent = banner
+
+            local closeBtn = Instance.new("TextButton")
+            closeBtn.Name = "CloseBtn"
+            closeBtn.Size = UDim2.new(0, 20, 0, 20)
+            closeBtn.Position = UDim2.new(1, -26, 0, 6)
+            closeBtn.BackgroundColor3 = Color3.fromRGB(26, 28, 38)
+            closeBtn.Font = Enum.Font.GothamBold
+            closeBtn.Text = "✕"
+            closeBtn.TextColor3 = Color3.fromRGB(170, 175, 190)
+            closeBtn.TextSize = 11
+            closeBtn.Parent = banner
+
+            local cCorner = Instance.new("UICorner")
+            cCorner.CornerRadius = UDim.new(0, 4)
+            cCorner.Parent = closeBtn
+
+            closeBtn.MouseButton1Click:Connect(function()
+                pcall(function() gui:Destroy() end)
+            end)
+
+            -- Slide down smoothly
+            local ts = Hub.Services.TweenService
+            pcall(function()
+                ts:Create(banner, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(0.5, 0, 0, 14)
+                }):Play()
+            end)
+
+            -- Wait for full booth replication across the entire server (up to 9 seconds)
+            local bc = nil
+            local allListings = nil
+            local lastCount = 0
+            local lastChangeTime = tick()
+            local startWait = tick()
+
+            while (tick() - startWait < 9.0) and gui and gui.Parent do
+                pcall(function()
+                    bc = require(Hub.Services.ReplicatedStorage.Controllers.Booth.BoothController)
+                    if bc and bc.BoothListings then
+                        allListings = bc.BoothListings:Get()
+                    end
+                end)
+
+                local currentBooths = 0
+                local currentItems = 0
+                if allListings then
+                    for _, items in pairs(allListings) do
+                        currentBooths = currentBooths + 1
+                        for _, _ in pairs(items) do
+                            currentItems = currentItems + 1
+                        end
+                    end
+                end
+
+                if currentBooths ~= lastCount then
+                    lastCount = currentBooths
+                    lastChangeTime = tick()
+                    content.Text = string.format("Загружено витрин: %d | Предметов на рынке: %d...", currentBooths, currentItems)
+                end
+
+                -- Booths replicate incrementally: when we have booths and count hasn't changed for 1.6s, or reached 25+
+                if currentBooths > 0 and (tick() - lastChangeTime >= 1.6 or currentBooths >= 26) then
+                    break
+                end
+
+                task.wait(0.25)
+            end
+
+            -- Match items against Watchlist & TeleportItemName
+            local watchItems = {}
+            if self.Config.WatchlistItems then
+                for _, w in ipairs(self.Config.WatchlistItems) do
+                    table.insert(watchItems, w)
+                end
+            end
+            local tpItem = self.Config.TeleportItemName
+            if tpItem and tpItem:gsub("%s+", "") ~= "" then
+                local exists = false
+                for _, w in ipairs(watchItems) do
+                    if w:lower() == tpItem:lower() then exists = true break end
+                end
+                if not exists then
+                    table.insert(watchItems, tpItem)
+                end
+            end
+
+            local foundList = {}
+            if allListings and #watchItems > 0 then
+                for ownerId, items in pairs(allListings) do
+                    local sellerName = nil
+                    local pl = Hub.Services.Players:GetPlayerByUserId(tonumber(ownerId))
+                    if pl then
+                        sellerName = pl.Name
+                    else
+                        pcall(function()
+                            sellerName = Hub.Services.Players:GetNameFromUserIdAsync(tonumber(ownerId))
+                        end)
+                    end
+                    sellerName = sellerName or ("ID:" .. tostring(ownerId))
+
+                    for listId, itemData in pairs(items) do
+                        local rawName = itemData.ItemName or (itemData.Item and itemData.Item.Name) or ""
+                        local dispName = self:ResolveItemDisplayName(rawName, itemData.Type)
+                        local matched, query = self:MatchesWatchlist(dispName, rawName)
+                        if matched then
+                            table.insert(foundList, {
+                                Name = dispName ~= "" and dispName or rawName,
+                                Amount = itemData.Amount or 1,
+                                Price = itemData.Price or 0,
+                                Seller = sellerName
+                            })
+                        end
+                    end
+                end
+            end
+
+            if not gui.Parent then return end
+
+            if #foundList > 0 then
+                -- Sort by price ascending
+                table.sort(foundList, function(a, b)
+                    return (a.Price or 0) < (b.Price or 0)
+                end)
+
+                stroke.Color = Color3.fromRGB(80, 220, 120)
+                title.TextColor3 = Color3.fromRGB(80, 220, 120)
+                title.Text = string.format("🎯 НА СЕРВЕРЕ НАЙДЕНО (%d ЛОТ.):", #foundList)
+
+                local maxRows = math.min(#foundList, 4)
+                local lines = {}
+                for i = 1, maxRows do
+                    local f = foundList[i]
+                    table.insert(lines, string.format("• %s | x%d | Продавец: %s | %d 🪙", f.Name, f.Amount, f.Seller, f.Price))
+                end
+                if #foundList > maxRows then
+                    table.insert(lines, string.format("... и еще %d лотов на сервере", #foundList - maxRows))
+                end
+
+                content.Text = table.concat(lines, "\n")
+                content.TextColor3 = Color3.fromRGB(240, 240, 245)
+                content.Size = UDim2.new(1, -24, 0, (#lines * 18) + 4)
+
+                local newHeight = 32 + (#lines * 18) + 10
+                ts:Create(banner, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Size = UDim2.new(0, 560, 0, newHeight)
+                }):Play()
+
+                -- Play pleasant chime sound
+                pcall(function()
+                    local sound = Instance.new("Sound")
+                    sound.SoundId = "rbxassetid://1053296915"
+                    sound.Volume = 0.5
+                    sound.Parent = Hub.Services.SoundService
+                    sound:Play()
+                    game:GetService("Debris"):AddItem(sound, 3)
+                end)
+
+                -- Keep visible for 20s then slide up
+                task.delay(20, function()
+                    if gui and gui.Parent then
+                        pcall(function()
+                            local t = ts:Create(banner, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+                                Position = UDim2.new(0.5, 0, 0, -newHeight - 20)
+                            })
+                            t:Play()
+                            t.Completed:Connect(function() gui:Destroy() end)
+                        end)
+                    end
+                end)
+            else
+                stroke.Color = Color3.fromRGB(100, 110, 130)
+                title.TextColor3 = Color3.fromRGB(180, 185, 200)
+                title.Text = "ℹ️ ТОРГОВАЯ ПЛОЩАДКА: ВИТРИНЫ ПРОВЕРЕНЫ"
+                if #watchItems == 0 then
+                    content.Text = "Список Watchlist пуст. Добавь предметы в меню для отслеживания."
+                else
+                    content.Text = string.format("Проверено %d витрин. Искомых предметов из Watchlist не найдено.", lastCount)
+                end
+                content.TextColor3 = Color3.fromRGB(160, 165, 175)
+
+                -- Auto-hide after 5s
+                task.delay(5, function()
+                    if gui and gui.Parent then
+                        pcall(function()
+                            local t = ts:Create(banner, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+                                Position = UDim2.new(0.5, 0, 0, -70)
+                            })
+                            t:Play()
+                            t.Completed:Connect(function() gui:Destroy() end)
+                        end)
+                    end
+                end)
+            end
+        end)
+    end)
+end
+
 -- Helper: Auto-Teleport to Seller's Server via Index
 function Hub:TeleportToSeller(targetItem)
     local itemName = targetItem or self.Config.TeleportItemName
     if not itemName or itemName:gsub("%s+", "") == "" then
-        self:Notify("Teleport", "Введи название предмета для ТП!")
-        return
+        -- Check if player already opened an item in Index
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        local prev = pg and pg:FindFirstChild("Index") and pg.Index:FindFirstChild("Main") and pg.Index.Main:FindFirstChild("Left") and pg.Index.Main.Left:FindFirstChild("MainLabel") and pg.Index.Main.Left.MainLabel:FindFirstChild("ItemPreview")
+        if prev and prev.Visible and prev:FindFirstChild("ItemName") and prev.ItemName.Text ~= "" then
+            itemName = prev.ItemName.Text
+        else
+            self:Notify("Teleport", "Введи название предмета для ТП или выбери его в Index!")
+            return
+        end
     end
 
     local cat, exactName = self:FindItemCategory(itemName)
     self:Notify("Teleport", "Поиск продавца для: " .. exactName .. " (" .. cat .. ")...")
 
-    local okRap, rc = pcall(function()
-        return require(Hub.Services.ReplicatedStorage.Controllers.Trading.RAPChartController)
-    end)
     local okIdx, ic = pcall(function()
         return require(Hub.Services.ReplicatedStorage.Controllers.Trading.IndexController)
     end)
 
-    if not okRap or not rc or not okIdx or not ic then
+    if not okIdx or not ic then
         self:Notify("Teleport", "Ошибка контроллеров игры")
         return
     end
@@ -1041,16 +1385,17 @@ function Hub:TeleportToSeller(targetItem)
     self.State.IsSearchingSellers = true
 
     task.spawn(function()
+        -- 1. Open Index and preview the item with (cat, exactName)
         pcall(function()
             ic:Open()
-            ic:SetPage(cat)
-            rc:Render("Index", cat, Hub.Services.HttpService:JSONEncode({{"Name", exactName}}))
+            ic:Preview(cat, exactName)
         end)
 
-        task.wait(0.5)
+        task.wait(0.4)
 
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        local btn = pg and pg:FindFirstChild("Index") and pg.Index:FindFirstChild("Main") and pg.Index.Main:FindFirstChild("Right") and pg.Index.Main.Right:FindFirstChild("ShowSellers")
+        local right = pg and pg:FindFirstChild("Index") and pg.Index:FindFirstChild("Main") and pg.Index.Main:FindFirstChild("Right")
+        local btn = right and right:FindFirstChild("ShowSellers")
 
         if not btn then
             self.State.IsSearchingSellers = false
@@ -1058,63 +1403,134 @@ function Hub:TeleportToSeller(targetItem)
             return
         end
 
+        -- 2. Safely trigger Find Seller via IndexController connection (bypassing Analytics kick)
+        local fired = false
         pcall(function()
-            if firesignal then
-                firesignal(btn.Activated)
-            else
-                for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() end
+            for _, c in ipairs(getconnections(btn.Activated)) do
+                local inf = debug.getinfo(c.Function)
+                if inf and inf.source and inf.source:find("IndexController") then
+                    fired = true
+                    task.spawn(function()
+                        pcall(c.Function)
+                    end)
+                end
             end
         end)
+        if not fired and firesignal then
+            pcall(function() firesignal(btn.Activated) end)
+        end
 
+        -- 3. Wait for search to complete naturally.
+        -- DO NOT touch IndexScreenBlackout.Enabled! The game manages it!
+        -- Search remote typically takes 3 to 12 seconds.
         local startTime = tick()
         local clicked = false
+        local sawBlackout = false
 
-        while tick() - startTime < 6 do
+        while (tick() - startTime < 22) and not clicked do
             task.wait(0.2)
             if pg then
-                for _, containerName in ipairs({"Prompts", "Index", "Notifications", "RobloxGui"}) do
-                    local container = pg:FindFirstChild(containerName)
-                    if container then
-                        for _, d in ipairs(container:GetDescendants()) do
-                            if (d:IsA("TextButton") or d:IsA("ImageButton")) and d.Visible then
-                                local text = d:IsA("TextButton") and d.Text or ""
-                                local lbl = d:FindFirstChildWhichIsA("TextLabel")
-                                if lbl and lbl.Text ~= "" then
-                                    text = text .. " " .. lbl.Text
-                                end
-                                local lower = text:lower():gsub("%s+", "")
-                                if lower:find("yes") or lower:find("да") or lower:find("teleport") or lower:find("confirm") or lower:find("тп") then
-                                    pcall(function()
-                                        if firesignal then
-                                            firesignal(d.Activated)
-                                        else
-                                            for _, c in ipairs(getconnections(d.Activated)) do c:Fire() end
-                                            for _, c in ipairs(getconnections(d.MouseButton1Click)) do c:Fire() end
+                local isb = pg:FindFirstChild("IndexScreenBlackout")
+                if isb and isb.Enabled then
+                    sawBlackout = true
+                end
+
+                -- Check Prompt (Accept or Ok)
+                local prompts = pg:FindFirstChild("Prompts")
+                if prompts then
+                    local accept = prompts:FindFirstChild("Accept")
+                    if accept and accept.Visible then
+                        local desc = accept:FindFirstChild("Description")
+                        local descText = (desc and desc.Text or ""):lower()
+                        if descText:find("seller") or descText:find("teleport") then
+                            local yesBtn = accept:FindFirstChild("Yes")
+                            if yesBtn and yesBtn.Visible then
+                                pcall(function()
+                                    if firesignal then
+                                        firesignal(yesBtn.Activated)
+                                    else
+                                        for _, c in ipairs(getconnections(yesBtn.Activated)) do
+                                            pcall(c.Function)
                                         end
-                                    end)
-                                    clicked = true
-                                    self:Notify("Teleport", "Подтверждено! Телепортация...")
-                                    break
-                                end
+                                    end
+                                end)
+                                clicked = true
+                                self:Notify("Teleport", "✅ Продавец найден! Телепортация...")
+                                break
                             end
                         end
                     end
-                    if clicked then break end
+
+                    local okPrompt = prompts:FindFirstChild("Ok")
+                    if okPrompt and okPrompt.Visible then
+                        local okDesc = okPrompt:FindFirstChild("Description")
+                        local okText = (okDesc and okDesc.Text or ""):lower()
+                        if okText:find("no users") or okText:find("no seller") or okText:find("seller") then
+                            local okBtn = okPrompt:FindFirstChild("Ok") or okPrompt:FindFirstChild("Close")
+                            if okBtn then
+                                pcall(function()
+                                    if firesignal then firesignal(okBtn.Activated) else for _, c in ipairs(getconnections(okBtn.Activated)) do pcall(c.Function) end end
+                                end)
+                            end
+                            self:Notify("Teleport", "❌ Продавцы онлайн для этого предмета не найдены")
+                            self.State.IsSearchingSellers = false
+                            return
+                        end
+                    end
+                end
+
+                -- Check OnlineSellers list for cards with Join buttons
+                local ml = right and right:FindFirstChild("MainLabel")
+                local os = ml and ml:FindFirstChild("OnlineSellers")
+                if os and os.Visible then
+                    for _, card in ipairs(os:GetChildren()) do
+                        if card:IsA("ImageButton") and card.Name ~= "Template" and card.Visible then
+                            local joinBtn = card:FindFirstChild("Join") or card:FindFirstChildWhichIsA("ImageButton")
+                            if joinBtn and joinBtn.Visible then
+                                pcall(function()
+                                    if firesignal then
+                                        firesignal(joinBtn.Activated)
+                                    else
+                                        for _, c in ipairs(getconnections(joinBtn.Activated)) do
+                                            pcall(c.Function)
+                                        end
+                                    end
+                                end)
+                                clicked = true
+                                self:Notify("Teleport", "✅ Сервер найден! Подключение...")
+                                break
+                            end
+                        end
+                    end
+                end
+
+                -- If blackout finished after being seen, give a brief grace period (1.5s) for prompts
+                if sawBlackout and (not isb or not isb.Enabled) and (tick() - startTime > 2.5) then
+                    task.wait(1.5)
+                    -- Re-check prompt one last time
+                    if prompts then
+                        local accept = prompts:FindFirstChild("Accept")
+                        if accept and accept.Visible and accept:FindFirstChild("Yes") then
+                            pcall(function()
+                                if firesignal then
+                                    firesignal(accept.Yes.Activated)
+                                else
+                                    for _, c in ipairs(getconnections(accept.Yes.Activated)) do pcall(c.Function) end
+                                end
+                            end)
+                            clicked = true
+                            self:Notify("Teleport", "✅ Продавец найден! Телепортация...")
+                        end
+                    end
+                    break
                 end
             end
-            if clicked then break end
         end
 
-        task.wait(1.5)
         self.State.IsSearchingSellers = false
-        pcall(function()
-            if pg and pg:FindFirstChild("IndexScreenBlackout") then
-                pg.IndexScreenBlackout.Enabled = false
-            end
-        end)
 
         if not clicked then
-            self:Notify("Teleport", "Продавцы не найдены или сервер не отвечает")
+            self:Notify("Teleport", "❌ Продавцы онлайн для этого предмета не найдены")
         end
     end)
 end
@@ -3508,6 +3924,9 @@ end)
 
 -- Apply Fast Load optimizations (skip cutscenes, popups & blackouts)
 Hub:ApplyFastLoad()
+
+-- Show Join Server Watchlist notification banner at top of screen
+Hub:ShowJoinServerBanner()
 
 -- Ensure native Index starts completely clean (ItemPreview hidden, ItemsList visible)
 pcall(function()
