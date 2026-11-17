@@ -35,6 +35,8 @@ local Hub = {
         ContentProvider = cloneref(game:GetService("ContentProvider")),
         Stats = cloneref(game:GetService("Stats")),
         Workspace = cloneref(game:GetService("Workspace")),
+        Lighting = cloneref(game:GetService("Lighting")),
+        SoundService = cloneref(game:GetService("SoundService")),
     },
     Theme = {
         MainBg = Color3.fromRGB(15, 15, 18),
@@ -56,6 +58,7 @@ local Hub = {
         MenuKey = Enum.KeyCode.RightControl,
         CloseGuiOnStart = true,
         FastLoad = true,
+        UltraFastLoad = true,
         AntiAFK = false,
         AutoRejoinOnKick = true,
         AutoClaimBooth = false,
@@ -83,6 +86,16 @@ local Hub = {
         IsServerHopping = false,
         IsSearchingSellers = false,
         FastLoadWatcher = false,
+        StrippedEffects = {
+            Particles = {},
+            Lighting = {},
+            Terrain = {},
+            Sounds = {},
+            Leaderboard = nil,
+        },
+        UltraFastLoadActive = false,
+        NotifiedListings = {},
+        BoothObserverSetup = false,
         AntiAfkConn = nil,
         SelectedConfig = "",
         EspFolder = nil,
@@ -1052,6 +1065,11 @@ function Hub:ApplyFastLoad()
                 end
             end
         end)
+
+        -- 9. Ultra Fast Load: Strip particles, beams, water waves, leaderboards
+        if self.Config.UltraFastLoad then
+            self:ApplyUltraFastLoad(true)
+        end
     end
 
     -- Run immediate pass
@@ -1098,8 +1116,194 @@ function Hub:ApplyFastLoad()
     end
 end
 
--- Helper: Prominent Top Banner Notification on Server Join for Watchlist items
-function Hub:ShowJoinServerBanner()
+-- Helper: Ultra Fast Load & FPS Booster (Strips particles, beams, shaders, leaderboards for max FPS & instant load)
+function Hub:ApplyUltraFastLoad(enable)
+    if enable then
+        if self.State.UltraFastLoadActive then return end
+        self.State.UltraFastLoadActive = true
+
+        pcall(function()
+            local ws = Hub.Services.Workspace
+            local lighting = Hub.Services.Lighting
+
+            -- 1. Lighting post-processing
+            if self.State.StrippedEffects.Shadows == nil then
+                self.State.StrippedEffects.Shadows = lighting.GlobalShadows
+            end
+            lighting.GlobalShadows = false
+
+            for _, fx in ipairs(lighting:GetChildren()) do
+                if fx:IsA("PostProcessEffect") then
+                    if self.State.StrippedEffects.Lighting[fx] == nil then
+                        self.State.StrippedEffects.Lighting[fx] = fx.Enabled
+                    end
+                    fx.Enabled = false
+                elseif fx:IsA("Atmosphere") then
+                    if self.State.StrippedEffects.Lighting[fx] == nil then
+                        self.State.StrippedEffects.Lighting[fx] = fx.Density
+                    end
+                    fx.Density = 0
+                end
+            end
+
+            -- 2. Workspace Particles, Beams, Trails, Fire, Smoke, Sparkles
+            for _, d in ipairs(ws:GetDescendants()) do
+                if d:IsA("ParticleEmitter") or d:IsA("Beam") or d:IsA("Trail") or d:IsA("Fire") or d:IsA("Smoke") or d:IsA("Sparkles") then
+                    if self.State.StrippedEffects.Particles[d] == nil then
+                        self.State.StrippedEffects.Particles[d] = d.Enabled
+                    end
+                    d.Enabled = false
+                end
+            end
+
+            -- 3. Leaderboards (11,400 decorative parts in Plaza)
+            local lb = ws:FindFirstChild("Leaderboards")
+            if lb and lb.Parent == ws then
+                self.State.StrippedEffects.Leaderboard = lb
+                lb.Parent = nil
+            end
+
+            -- 4. Terrain water waves & reflections
+            local terrain = ws.Terrain
+            if terrain then
+                if self.State.StrippedEffects.Terrain.WaterWaveSpeed == nil then
+                    self.State.StrippedEffects.Terrain.WaterWaveSpeed = terrain.WaterWaveSpeed
+                    self.State.StrippedEffects.Terrain.WaterWaveSize = terrain.WaterWaveSize
+                    self.State.StrippedEffects.Terrain.WaterReflectance = terrain.WaterReflectance
+                end
+                terrain.WaterWaveSpeed = 0
+                terrain.WaterWaveSize = 0
+                terrain.WaterReflectance = 0
+            end
+
+            -- 5. Mute background 3D Plaza music/ambient sounds (keep UI sounds)
+            for _, s in ipairs(ws:GetDescendants()) do
+                if s:IsA("Sound") and s.Playing and s.Looped then
+                    if self.State.StrippedEffects.Sounds[s] == nil then
+                        self.State.StrippedEffects.Sounds[s] = s.Volume
+                    end
+                    s.Volume = 0
+                end
+            end
+        end)
+    else
+        if not self.State.UltraFastLoadActive then return end
+        self.State.UltraFastLoadActive = false
+
+        pcall(function()
+            local ws = Hub.Services.Workspace
+            local lighting = Hub.Services.Lighting
+
+            -- 1. Restore Lighting
+            if self.State.StrippedEffects.Shadows ~= nil then
+                lighting.GlobalShadows = self.State.StrippedEffects.Shadows
+            end
+            for fx, orig in pairs(self.State.StrippedEffects.Lighting or {}) do
+                if fx and fx.Parent then
+                    if fx:IsA("PostProcessEffect") then
+                        fx.Enabled = orig
+                    elseif fx:IsA("Atmosphere") then
+                        fx.Density = orig
+                    end
+                end
+            end
+
+            -- 2. Restore Particles
+            for d, orig in pairs(self.State.StrippedEffects.Particles or {}) do
+                if d and d.Parent then d.Enabled = orig end
+            end
+
+            -- 3. Restore Leaderboards
+            if self.State.StrippedEffects.Leaderboard and self.State.StrippedEffects.Leaderboard.Parent == nil then
+                self.State.StrippedEffects.Leaderboard.Parent = ws
+            end
+
+            -- 4. Restore Terrain
+            local terrain = ws.Terrain
+            if terrain and self.State.StrippedEffects.Terrain.WaterWaveSpeed ~= nil then
+                terrain.WaterWaveSpeed = self.State.StrippedEffects.Terrain.WaterWaveSpeed
+                terrain.WaterWaveSize = self.State.StrippedEffects.Terrain.WaterWaveSize
+                terrain.WaterReflectance = self.State.StrippedEffects.Terrain.WaterReflectance
+            end
+
+            -- 5. Restore Sounds
+            for s, orig in pairs(self.State.StrippedEffects.Sounds or {}) do
+                if s and s.Parent then s.Volume = orig end
+            end
+
+            -- Reset storage
+            self.State.StrippedEffects = {
+                Particles = {},
+                Lighting = {},
+                Terrain = {},
+                Sounds = {},
+                Leaderboard = nil,
+            }
+        end)
+    end
+end
+
+-- Helper: Match all current listings against Watchlist & TeleportItem
+function Hub:CollectMatchingListings(allListings)
+    local watchItems = {}
+    if self.Config.WatchlistItems then
+        for _, w in ipairs(self.Config.WatchlistItems) do
+            table.insert(watchItems, w)
+        end
+    end
+    local tpItem = self.Config.TeleportItemName
+    if tpItem and tpItem:gsub("%s+", "") ~= "" then
+        local exists = false
+        for _, w in ipairs(watchItems) do
+            if w:lower() == tpItem:lower() then exists = true break end
+        end
+        if not exists then
+            table.insert(watchItems, tpItem)
+        end
+    end
+
+    local foundList = {}
+    if not allListings or #watchItems == 0 then
+        return foundList, watchItems
+    end
+
+    for ownerId, items in pairs(allListings) do
+        local sellerName = nil
+        local pl = Hub.Services.Players:GetPlayerByUserId(tonumber(ownerId))
+        if pl then
+            sellerName = pl.Name
+        else
+            pcall(function()
+                sellerName = Hub.Services.Players:GetNameFromUserIdAsync(tonumber(ownerId))
+            end)
+        end
+        sellerName = sellerName or ("ID:" .. tostring(ownerId))
+
+        for listId, itemData in pairs(items) do
+            local rawName = itemData.ItemName or (itemData.Item and itemData.Item.Name) or ""
+            local dispName = self:ResolveItemDisplayName(rawName, itemData.Type)
+            local matched, query = self:MatchesWatchlist(dispName, rawName)
+            if matched then
+                table.insert(foundList, {
+                    Id = tostring(ownerId) .. "_" .. tostring(listId),
+                    Name = dispName ~= "" and dispName or rawName,
+                    Amount = itemData.Amount or 1,
+                    Price = itemData.Price or 0,
+                    Seller = sellerName
+                })
+            end
+        end
+    end
+
+    table.sort(foundList, function(a, b)
+        return (a.Price or 0) < (b.Price or 0)
+    end)
+
+    return foundList, watchItems
+end
+
+-- Helper: Top Banner Notification on Server Join / Rescan for Watchlist items
+function Hub:ShowJoinServerBanner(isManualRescan)
     task.spawn(function()
         pcall(function()
             local gethui = gethui or function() return game:GetService("CoreGui") end
@@ -1118,8 +1322,8 @@ function Hub:ShowJoinServerBanner()
 
             local banner = Instance.new("Frame")
             banner.Name = "Banner"
-            banner.Size = UDim2.new(0, 540, 0, 50)
-            banner.Position = UDim2.new(0.5, 0, 0, -65)
+            banner.Size = UDim2.new(0, 560, 0, 52)
+            banner.Position = UDim2.new(0.5, 0, 0, -70)
             banner.AnchorPoint = Vector2.new(0.5, 0)
             banner.BackgroundColor3 = Color3.fromRGB(15, 17, 24)
             banner.BackgroundTransparency = 0.08
@@ -1141,7 +1345,7 @@ function Hub:ShowJoinServerBanner()
             title.Position = UDim2.new(0, 12, 0, 6)
             title.BackgroundTransparency = 1
             title.Font = Enum.Font.GothamBold
-            title.Text = "⏳ ТОРГОВАЯ ПЛОЩАДКА: ЗАГРУЗКА ВИТРИН..."
+            title.Text = isManualRescan and "🔍 ПЕРЕСКАНИРОВАНИЕ ВИТРИН..." or "⏳ СКАНИРОВАНИЕ ВИТРИН СЕРВЕРА..."
             title.TextColor3 = Color3.fromRGB(120, 180, 255)
             title.TextSize = 12
             title.TextXAlignment = Enum.TextXAlignment.Left
@@ -1153,7 +1357,7 @@ function Hub:ShowJoinServerBanner()
             content.Position = UDim2.new(0, 12, 0, 26)
             content.BackgroundTransparency = 1
             content.Font = Enum.Font.GothamMedium
-            content.Text = "Ожидание полной репликации витрин сервера..."
+            content.Text = "Подключение к репликации рынка и проверка всех витрин..."
             content.TextColor3 = Color3.fromRGB(190, 195, 210)
             content.TextSize = 11.5
             content.TextXAlignment = Enum.TextXAlignment.Left
@@ -1186,14 +1390,16 @@ function Hub:ShowJoinServerBanner()
                 }):Play()
             end)
 
-            -- Wait for full booth replication across the entire server (up to 9 seconds)
             local bc = nil
             local allListings = nil
-            local lastCount = 0
+            local lastBooths = -1
             local lastChangeTime = tick()
             local startWait = tick()
+            local maxWait = isManualRescan and 3.0 or 14.0
+            local minWait = isManualRescan and 0.4 or 6.0
+            local soundPlayed = false
 
-            while (tick() - startWait < 9.0) and gui and gui.Parent do
+            while (tick() - startWait < maxWait) and gui and gui.Parent do
                 pcall(function()
                     bc = require(Hub.Services.ReplicatedStorage.Controllers.Booth.BoothController)
                     if bc and bc.BoothListings then
@@ -1212,115 +1418,74 @@ function Hub:ShowJoinServerBanner()
                     end
                 end
 
-                if currentBooths ~= lastCount then
-                    lastCount = currentBooths
+                if currentBooths ~= lastBooths then
+                    lastBooths = currentBooths
                     lastChangeTime = tick()
+                end
+
+                local foundList, watchItems = self:CollectMatchingListings(allListings)
+
+                if #foundList > 0 then
+                    -- Items found! Transform banner immediately to success state
+                    stroke.Color = Color3.fromRGB(80, 220, 120)
+                    title.TextColor3 = Color3.fromRGB(80, 220, 120)
+                    title.Text = string.format("🎯 НА СЕРВЕРЕ НАЙДЕНО (%d ЛОТ.):", #foundList)
+
+                    local maxRows = math.min(#foundList, 4)
+                    local lines = {}
+                    for i = 1, maxRows do
+                        local f = foundList[i]
+                        table.insert(lines, string.format("• %s | x%d | Продавец: %s | %d 🪙", f.Name, f.Amount, f.Seller, f.Price))
+                    end
+                    if #foundList > maxRows then
+                        table.insert(lines, string.format("... и еще %d лотов на сервере", #foundList - maxRows))
+                    end
+
+                    content.Text = table.concat(lines, "\n")
+                    content.TextColor3 = Color3.fromRGB(240, 240, 245)
+                    content.Size = UDim2.new(1, -24, 0, (#lines * 18) + 4)
+
+                    local newHeight = 32 + (#lines * 18) + 12
+                    ts:Create(banner, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                        Size = UDim2.new(0, 560, 0, newHeight)
+                    }):Play()
+
+                    if not soundPlayed then
+                        soundPlayed = true
+                        pcall(function()
+                            local sound = Instance.new("Sound")
+                            sound.SoundId = "rbxassetid://1053296915"
+                            sound.Volume = 0.55
+                            sound.Parent = Hub.Services.SoundService
+                            sound:Play()
+                            game:GetService("Debris"):AddItem(sound, 3)
+                        end)
+                    end
+                else
                     content.Text = string.format("Загружено витрин: %d | Предметов на рынке: %d...", currentBooths, currentItems)
                 end
 
-                -- Booths replicate incrementally: when we have booths and count hasn't changed for 1.6s, or reached 25+
-                if currentBooths > 0 and (tick() - lastChangeTime >= 1.6 or currentBooths >= 26) then
-                    break
-                end
-
-                task.wait(0.25)
-            end
-
-            -- Match items against Watchlist & TeleportItemName
-            local watchItems = {}
-            if self.Config.WatchlistItems then
-                for _, w in ipairs(self.Config.WatchlistItems) do
-                    table.insert(watchItems, w)
-                end
-            end
-            local tpItem = self.Config.TeleportItemName
-            if tpItem and tpItem:gsub("%s+", "") ~= "" then
-                local exists = false
-                for _, w in ipairs(watchItems) do
-                    if w:lower() == tpItem:lower() then exists = true break end
-                end
-                if not exists then
-                    table.insert(watchItems, tpItem)
-                end
-            end
-
-            local foundList = {}
-            if allListings and #watchItems > 0 then
-                for ownerId, items in pairs(allListings) do
-                    local sellerName = nil
-                    local pl = Hub.Services.Players:GetPlayerByUserId(tonumber(ownerId))
-                    if pl then
-                        sellerName = pl.Name
-                    else
-                        pcall(function()
-                            sellerName = Hub.Services.Players:GetNameFromUserIdAsync(tonumber(ownerId))
-                        end)
-                    end
-                    sellerName = sellerName or ("ID:" .. tostring(ownerId))
-
-                    for listId, itemData in pairs(items) do
-                        local rawName = itemData.ItemName or (itemData.Item and itemData.Item.Name) or ""
-                        local dispName = self:ResolveItemDisplayName(rawName, itemData.Type)
-                        local matched, query = self:MatchesWatchlist(dispName, rawName)
-                        if matched then
-                            table.insert(foundList, {
-                                Name = dispName ~= "" and dispName or rawName,
-                                Amount = itemData.Amount or 1,
-                                Price = itemData.Price or 0,
-                                Seller = sellerName
-                            })
-                        end
+                -- Stabilization condition: Must wait at least minWait seconds, and check if booth count hasn't changed for 3.0s or full capacity reached
+                local elapsed = tick() - startWait
+                if elapsed >= minWait then
+                    if currentBooths >= 26 or (currentBooths > 0 and (tick() - lastChangeTime >= 3.0)) then
+                        break
                     end
                 end
+
+                task.wait(0.3)
             end
 
-            if not gui.Parent then return end
+            if not gui or not gui.Parent then return end
 
-            if #foundList > 0 then
-                -- Sort by price ascending
-                table.sort(foundList, function(a, b)
-                    return (a.Price or 0) < (b.Price or 0)
-                end)
-
-                stroke.Color = Color3.fromRGB(80, 220, 120)
-                title.TextColor3 = Color3.fromRGB(80, 220, 120)
-                title.Text = string.format("🎯 НА СЕРВЕРЕ НАЙДЕНО (%d ЛОТ.):", #foundList)
-
-                local maxRows = math.min(#foundList, 4)
-                local lines = {}
-                for i = 1, maxRows do
-                    local f = foundList[i]
-                    table.insert(lines, string.format("• %s | x%d | Продавец: %s | %d 🪙", f.Name, f.Amount, f.Seller, f.Price))
-                end
-                if #foundList > maxRows then
-                    table.insert(lines, string.format("... и еще %d лотов на сервере", #foundList - maxRows))
-                end
-
-                content.Text = table.concat(lines, "\n")
-                content.TextColor3 = Color3.fromRGB(240, 240, 245)
-                content.Size = UDim2.new(1, -24, 0, (#lines * 18) + 4)
-
-                local newHeight = 32 + (#lines * 18) + 10
-                ts:Create(banner, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                    Size = UDim2.new(0, 560, 0, newHeight)
-                }):Play()
-
-                -- Play pleasant chime sound
-                pcall(function()
-                    local sound = Instance.new("Sound")
-                    sound.SoundId = "rbxassetid://1053296915"
-                    sound.Volume = 0.5
-                    sound.Parent = Hub.Services.SoundService
-                    sound:Play()
-                    game:GetService("Debris"):AddItem(sound, 3)
-                end)
-
-                -- Keep visible for 20s then slide up
-                task.delay(20, function()
+            local finalFound, watchItems = self:CollectMatchingListings(allListings)
+            if #finalFound > 0 then
+                -- Keep visible for 25s
+                task.delay(25, function()
                     if gui and gui.Parent then
                         pcall(function()
                             local t = ts:Create(banner, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
-                                Position = UDim2.new(0.5, 0, 0, -newHeight - 20)
+                                Position = UDim2.new(0.5, 0, 0, -120)
                             })
                             t:Play()
                             t.Completed:Connect(function() gui:Destroy() end)
@@ -1332,14 +1497,14 @@ function Hub:ShowJoinServerBanner()
                 title.TextColor3 = Color3.fromRGB(180, 185, 200)
                 title.Text = "ℹ️ ТОРГОВАЯ ПЛОЩАДКА: ВИТРИНЫ ПРОВЕРЕНЫ"
                 if #watchItems == 0 then
-                    content.Text = "Список Watchlist пуст. Добавь предметы в меню для отслеживания."
+                    content.Text = "Список Watchlist пуст. Введи название предмета в меню для отслеживания."
                 else
-                    content.Text = string.format("Проверено %d витрин. Искомых предметов из Watchlist не найдено.", lastCount)
+                    content.Text = string.format("Проверено %d витрин. Искомых предметов из Watchlist не найдено.", lastBooths > 0 and lastBooths or 0)
                 end
                 content.TextColor3 = Color3.fromRGB(160, 165, 175)
 
-                -- Auto-hide after 5s
-                task.delay(5, function()
+                -- Keep visible for 10s (gives user time to read)
+                task.delay(10, function()
                     if gui and gui.Parent then
                         pcall(function()
                             local t = ts:Create(banner, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
@@ -1350,6 +1515,46 @@ function Hub:ShowJoinServerBanner()
                         end)
                     end
                 end)
+            end
+        end)
+    end)
+end
+
+-- Helper: Permanent Live Observer for new booth listings while on server
+function Hub:SetupBoothObserver()
+    if self.State.BoothObserverSetup then return end
+    self.State.BoothObserverSetup = true
+
+    task.spawn(function()
+        local bc = nil
+        while not bc do
+            pcall(function()
+                bc = require(Hub.Services.ReplicatedStorage.Controllers.Booth.BoothController)
+            end)
+            if not bc or not bc.BoothListings then
+                task.wait(0.5)
+            end
+        end
+
+        pcall(function()
+            if bc and bc.BoothListings and bc.BoothListings.OnChange then
+                local conn = bc.BoothListings:OnChange(function(allListings)
+                    local foundList = self:CollectMatchingListings(allListings)
+                    local hasNew = false
+                    for _, item in ipairs(foundList) do
+                        if not self.State.NotifiedListings[item.Id] then
+                            self.State.NotifiedListings[item.Id] = true
+                            hasNew = true
+                        end
+                    end
+                    if hasNew then
+                        self:ShowJoinServerBanner(true)
+                    end
+                    if self.Config.WatchlistEsp then
+                        pcall(function() self:UpdateWatchlistEsp() end)
+                    end
+                end)
+                table.insert(self.State.Connections, conn)
             end
         end)
     end)
@@ -3438,6 +3643,11 @@ function Hub:BuildTradeHelperTab(page)
         self:TeleportToSeller(tpBox.Text)
     end, self.Theme.SuccessGreen, Color3.fromRGB(18, 36, 26))
 
+    self:CreateButton(secTp, "🔍 Пересканировать витрины сейчас (Rescan)", function()
+        self:Notify("Plaza", "Сканирование всех витрин сервера...")
+        self:ShowJoinServerBanner(true)
+    end, self.Theme.AccentGlow, self.Theme.SurfaceLight)
+
     -- CARD 4: DISCORD WEBHOOK
     local secWebhook = self:CreateSection(right, "Discord Webhook")
 
@@ -3812,6 +4022,22 @@ function Hub:BuildSettingsTab(page)
         if val then self:ApplyFastLoad() end
     end, "FastLoad")
 
+    self:CreateToggle(actSec, "⚡ Ultra Fast Load (FPS Boost)", self.Config.UltraFastLoad, function(val)
+        self.Config.UltraFastLoad = val
+        self:ApplyUltraFastLoad(val)
+        self:Notify("Ultra Fast Load", val and "Мир очищен! Максимальный FPS." or "Графика и эффекты восстановлены!")
+    end, "UltraFastLoad")
+
+    self:CreateButton(actSec, "⚡ Очистить мир (Макс. FPS)", function()
+        self:ApplyUltraFastLoad(true)
+        self:Notify("FPS Boost", "Все партиклы, шейдеры и декорации отключены!")
+    end, self.Theme.SuccessGreen, Color3.fromRGB(18, 36, 26))
+
+    self:CreateButton(actSec, "🔄 Восстановить графику и эффекты", function()
+        self:ApplyUltraFastLoad(false)
+        self:Notify("Graphics", "Вся графика и спецэффекты восстановлены!")
+    end, self.Theme.AccentGlow, self.Theme.SurfaceLight)
+
     self:CreateButton(actSec, "Unload Script", function()
         self:Unload()
     end, self.Theme.DangerRed, self.Theme.DangerDark)
@@ -3924,9 +4150,15 @@ end)
 
 -- Apply Fast Load optimizations (skip cutscenes, popups & blackouts)
 Hub:ApplyFastLoad()
+if Hub.Config.UltraFastLoad and Hub.ApplyUltraFastLoad then
+    Hub:ApplyUltraFastLoad(true)
+end
 
 -- Show Join Server Watchlist notification banner at top of screen
 Hub:ShowJoinServerBanner()
+
+-- Setup permanent live observer for new booth listings while on server
+Hub:SetupBoothObserver()
 
 -- Ensure native Index starts completely clean (ItemPreview hidden, ItemsList visible)
 pcall(function()
