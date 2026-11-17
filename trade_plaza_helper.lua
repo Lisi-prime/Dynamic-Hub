@@ -20,6 +20,7 @@
 local cloneref = cloneref or function(x) return x end
 local gethui = gethui or function() return cloneref(game:GetService("CoreGui")) end
 
+_G.DynamicTradeHub = nil
 local Hub = {
     Services = {
         Players = cloneref(game:GetService("Players")),
@@ -34,16 +35,6 @@ local Hub = {
         ContentProvider = cloneref(game:GetService("ContentProvider")),
         Stats = cloneref(game:GetService("Stats")),
         Workspace = cloneref(game:GetService("Workspace")),
-        VirtualUser = (function()
-            local vu = nil
-            pcall(function() vu = cloneref(game:GetService("VirtualUser")) end)
-            return vu
-        end)(),
-        VirtualInputManager = (function()
-            local vim = nil
-            pcall(function() vim = cloneref(game:GetService("VirtualInputManager")) end)
-            return vim
-        end)(),
     },
     Theme = {
         MainBg = Color3.fromRGB(15, 15, 18),
@@ -63,15 +54,19 @@ local Hub = {
     },
     Config = {
         MenuKey = Enum.KeyCode.RightControl,
+        CloseGuiOnStart = true,
+        FastLoad = true,
         AntiAFK = false,
         AutoRejoinOnKick = true,
         AutoClaimBooth = false,
-        AutoTpToMyBooth = true,
         AutoServerHop = false,
         MinPlayersThreshold = 6,
         EspMyBooth = false,
         MyBoothTracer = false,
         EspBooths = false,
+        WatchlistEsp = true,
+        WatchlistItems = {},
+        TeleportItemName = "",
         WebhookEnabled = false,
         WebhookUrl = "",
         Key_OpenIndex = Enum.KeyCode.Q,
@@ -82,13 +77,14 @@ local Hub = {
         Connections = {},
         Tabs = {},
         TabButtons = {},
+        ConfigControls = {},
         WindowSize = UDim2.new(0, 620, 0, 430),
         IsRejoining = false,
         IsServerHopping = false,
+        IsSearchingSellers = false,
+        FastLoadWatcher = false,
         AntiAfkConn = nil,
         SelectedConfig = "",
-        SessionProfit = 0,
-        SoldHistory = {},
         EspFolder = nil,
         MyBoothHighlight = nil,
         MyBoothBillboard = nil,
@@ -96,6 +92,12 @@ local Hub = {
         MyBoothAtt0 = nil,
         MyBoothAtt1 = nil,
         LastSelectedBoothItem = "",
+        InStatsMode = false,
+        IndexNativeConn = nil,
+        StatsCloseConn = nil,
+        WatchlistListingConn = nil,
+        RefreshWatchlistUI = nil,
+        UpdateTeleportInput = nil,
     }
 }
 
@@ -108,6 +110,7 @@ local Icons = {
     User = "rbxassetid://10747373176",
     Server = "rbxassetid://10723395215",
     Store = "rbxassetid://7734053495",
+    Search = "rbxassetid://10734943902",
 }
 
 -- Safe Parent Target (gethui prevents BAC from scanning descendants)
@@ -127,39 +130,9 @@ espContainer.Name = "Dynamic_Hub_ESP"
 espContainer.Parent = parentTarget
 Hub.State.EspFolder = espContainer
 
--- LOGO ASSET LOADER
+-- LOGO ASSET LOADER (Safe native asset, no PreloadAsync / writefile)
 function Hub:GetLogoAsset()
-    local rawUrl = "https://raw.githubusercontent.com/Lisi-prime/Dynamic-Hub/main/Dynamic_logo.png"
-    local customFn = getcustomasset or getsynasset or (syn and syn.get_custom_asset)
-    local writeFn = writefile
-    local isfileFn = isfile
-    local req = (syn and syn.request) or (http and http.request) or request or http_request
-
-    if type(customFn) == "function" and type(writeFn) == "function" then
-        local fileName = "dynamic_hub_logo.png"
-        if type(isfileFn) == "function" and isfileFn(fileName) then
-            local ok, asset = pcall(customFn, fileName)
-            if ok and asset then return asset end
-        end
-
-        if type(req) == "function" then
-            local ok, res = pcall(req, { Url = rawUrl, Method = "GET" })
-            if ok and res and (res.StatusCode == 200 or res.Success) and res.Body and #res.Body > 200 then
-                pcall(writeFn, fileName, res.Body)
-                local assetOk, assetId = pcall(customFn, fileName)
-                if assetOk and assetId then
-                    pcall(function()
-                        local holder = Instance.new("ImageLabel")
-                        holder.Image = assetId
-                        Hub.Services.ContentProvider:PreloadAsync({ holder })
-                        holder:Destroy()
-                    end)
-                    return assetId
-                end
-            end
-        end
-    end
-    return rawUrl
+    return "rbxassetid://7734053495"
 end
 
 -- UI Helper Methods
@@ -216,6 +189,16 @@ function Hub:Unload()
         pcall(function() self.State.AntiAfkConn:Disconnect() end)
         self.State.AntiAfkConn = nil
     end
+    self.Config.AntiAFK = false
+
+    if self.State.StatsCloseConn then
+        pcall(function() self.State.StatsCloseConn:Disconnect() end)
+        self.State.StatsCloseConn = nil
+    end
+    if self.State.WatchlistListingConn then
+        pcall(function() self.State.WatchlistListingConn:Disconnect() end)
+        self.State.WatchlistListingConn = nil
+    end
     if self.State.EspFolder then
         pcall(function() self.State.EspFolder:Destroy() end)
         self.State.EspFolder = nil
@@ -262,33 +245,12 @@ function Hub:SetupKickWatcher()
         if not self.Config.AutoRejoinOnKick then return end
         if not msg or msg == "" then return end
         local lower = msg:lower()
-        -- Only trigger on genuine kick or disconnect errors, never on normal teleport fails
         if lower:find("teleport failed") then return end
         if lower:find("kick") or lower:find("disconnect") or lower:find("lost connection") or lower:find("idle") or lower:find("267") or lower:find("268") or lower:find("277") then
             self:TriggerRejoin("GuiService Kick: " .. msg)
         end
     end)
     table.insert(self.State.Connections, errConn)
-
-    pcall(function()
-        local rPrompt = self.Services.CoreGui:FindFirstChild("RobloxPromptGui")
-        if rPrompt then
-            local overlay = rPrompt:FindFirstChild("promptOverlay")
-            if overlay then
-                local promptConn = overlay.ChildAdded:Connect(function(child)
-                    if not self.Config.AutoRejoinOnKick then return end
-                    if child.Name == "ErrorPrompt" then
-                        task.wait(0.5)
-                        local msgLabel = child:FindFirstChild("ErrorMessage", true)
-                        local text = msgLabel and msgLabel.Text:lower() or ""
-                        if text:find("teleport failed") then return end
-                        self:TriggerRejoin("CoreGui ErrorPrompt: " .. text)
-                    end
-                end)
-                table.insert(self.State.Connections, promptConn)
-            end
-        end
-    end)
 end
 
 function Hub:SetupAutoServerHopWatcher()
@@ -401,7 +363,6 @@ function Hub:ClaimNearestBooth()
             local lookTarget = holder and holder.WorldPosition or (rootPart.Position + Vector3.new(4, 2, 0))
             local standOwnerCF = CFrame.lookAt(ownerPos, Vector3.new(lookTarget.X, ownerPos.Y, lookTarget.Z))
 
-            local oldCF = root.CFrame
             root.CFrame = standOwnerCF
             task.wait(0.15)
 
@@ -414,15 +375,6 @@ function Hub:ClaimNearestBooth()
             end
 
             task.wait(0.35)
-
-            if not self.Config.AutoTpToMyBooth then
-                root.CFrame = oldCF
-            else
-                task.spawn(function()
-                    task.wait(0.25)
-                    self:TeleportToMyBooth(nearestStand)
-                end)
-            end
 
             self:Notify("Booth", "Захвачен стенд: " .. nearestStand.Name)
             if self.Config.MyBoothTracer then
@@ -587,134 +539,400 @@ end
 -- 4. ESP All Claimed Booths (Dynamic Billboard Owner Names)
 function Hub:UpdateBoothsEsp(enabled)
     if not self.State.EspFolder then return end
-    for _, ch in ipairs(self.State.EspFolder:GetChildren()) do
-        if ch.Name:find("StandOwner_") then
-            ch:Destroy()
-        end
-    end
 
-    if not enabled then return end
+    if not enabled then
+        for _, ch in ipairs(self.State.EspFolder:GetChildren()) do
+            if ch.Name:find("StandOwner_") then
+                ch:Destroy()
+            end
+        end
+        return
+    end
 
     local stands = Hub.Services.Workspace:FindFirstChild("Spawn") and Hub.Services.Workspace.Spawn:FindFirstChild("Hub") and Hub.Services.Workspace.Spawn.Hub:FindFirstChild("Stands")
     if not stands then return end
 
+    local activeNames = {}
     for i, s in ipairs(stands:GetChildren()) do
         local ownerId = s:GetAttribute("Owner")
+        local bbName = "StandOwner_" .. tostring(i)
+
         if ownerId and ownerId ~= 0 and ownerId ~= LocalPlayer.UserId then
             local rootPart = s:FindFirstChild("Root") or s:FindFirstChildOfClass("BasePart")
             if rootPart then
+                activeNames[bbName] = true
                 local ownerName = "ID: " .. tostring(ownerId)
                 local p = Hub.Services.Players:GetPlayerByUserId(ownerId)
                 if p then
                     ownerName = p.DisplayName
                 else
                     for _, d in ipairs(s:GetDescendants()) do
-                        if d:IsA("TextLabel") and d.Name == "Username" and d.Text ~= "" then
-                            ownerName = d.Text:gsub("'s Booth", "")
+                        if d:IsA("TextLabel") and (d.Name == "Username" or d.Name == "PlayerName" or d.Name == "Owner") and d.Text ~= "" then
+                            ownerName = d.Text:gsub("'s Booth", ""):gsub("'s Stand", "")
                             break
                         end
                     end
                 end
 
-                local bb = Instance.new("BillboardGui")
-                bb.Name = "StandOwner_" .. i
-                bb.Size = UDim2.new(0, 130, 0, 26)
-                bb.AlwaysOnTop = true
-                bb.StudsOffset = Vector3.new(0, 4.5, 0)
-                bb.Adornee = rootPart
-                bb.Parent = self.State.EspFolder
+                local bb = self.State.EspFolder:FindFirstChild(bbName)
+                if not bb then
+                    bb = Instance.new("BillboardGui")
+                    bb.Name = bbName
+                    bb.Size = UDim2.new(0, 115, 0, 22)
+                    bb.AlwaysOnTop = true
+                    bb.MaxDistance = 0
+                    bb.LightInfluence = 0
+                    bb.ResetOnSpawn = false
+                    bb.StudsOffset = Vector3.new(0, 4.5, 0)
+                    bb.Adornee = rootPart
+                    bb.Parent = self.State.EspFolder
 
-                local frame = Instance.new("Frame")
-                frame.Size = UDim2.new(1, 0, 1, 0)
-                frame.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
-                frame.BackgroundTransparency = 0.2
-                frame.Parent = bb
-                self:Corner(frame, 6)
-                self:Stroke(frame, Color3.fromRGB(50, 50, 70), 1)
+                    local frame = Instance.new("Frame")
+                    frame.Name = "BgFrame"
+                    frame.Size = UDim2.new(1, 0, 1, 0)
+                    frame.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
+                    frame.BackgroundTransparency = 0.2
+                    frame.Parent = bb
+                    self:Corner(frame, 5)
+                    self:Stroke(frame, Color3.fromRGB(50, 50, 70), 1)
 
-                local icon = Instance.new("ImageLabel")
-                icon.Size = UDim2.new(0, 13, 0, 13)
-                icon.Position = UDim2.new(0, 6, 0.5, -6.5)
-                icon.BackgroundTransparency = 1
-                icon.Image = Icons.User
-                icon.ImageColor3 = Color3.fromRGB(180, 180, 210)
-                icon.Parent = frame
+                    local icon = Instance.new("ImageLabel")
+                    icon.Name = "UserIcon"
+                    icon.Size = UDim2.new(0, 12, 0, 12)
+                    icon.Position = UDim2.new(0, 5, 0.5, -6)
+                    icon.BackgroundTransparency = 1
+                    icon.Image = Icons.User
+                    icon.ImageColor3 = Color3.fromRGB(180, 180, 210)
+                    icon.Parent = frame
 
-                local title = Instance.new("TextLabel")
-                title.Size = UDim2.new(1, -24, 1, 0)
-                title.Position = UDim2.new(0, 22, 0, 0)
-                title.BackgroundTransparency = 1
-                title.Font = Enum.Font.GothamMedium
-                title.Text = ownerName
-                title.TextColor3 = Color3.fromRGB(220, 220, 240)
-                title.TextSize = 10
-                title.TextXAlignment = Enum.TextXAlignment.Left
-                title.Parent = frame
+                    local title = Instance.new("TextLabel")
+                    title.Name = "OwnerTitle"
+                    title.Size = UDim2.new(1, -22, 1, 0)
+                    title.Position = UDim2.new(0, 20, 0, 0)
+                    title.BackgroundTransparency = 1
+                    title.Font = Enum.Font.GothamMedium
+                    title.Text = ownerName
+                    title.TextColor3 = Color3.fromRGB(220, 220, 240)
+                    title.TextSize = 10
+                    title.TextXAlignment = Enum.TextXAlignment.Left
+                    title.Parent = frame
+                else
+                    bb.Adornee = rootPart
+                    bb.MaxDistance = 0
+                    local frame = bb:FindFirstChild("BgFrame") or bb:FindFirstChildOfClass("Frame")
+                    if frame then
+                        local title = frame:FindFirstChild("OwnerTitle") or frame:FindFirstChildOfClass("TextLabel")
+                        if title and title.Text ~= ownerName then
+                            title.Text = ownerName
+                        end
+                    end
+                end
             end
+        end
+    end
+
+    for _, ch in ipairs(self.State.EspFolder:GetChildren()) do
+        if ch.Name:find("StandOwner_") and not activeNames[ch.Name] then
+            ch:Destroy()
         end
     end
 end
 
--- Real-time ESP & Booth Watcher (Auto-Reclaim on booth loss)
-function Hub:SetupEspUpdater()
+local ItemInfoModule = nil
+pcall(function()
+    ItemInfoModule = require(Hub.Services.ReplicatedStorage.Shared.ItemInfo)
+end)
+
+local function FormatNumber(n)
+    if not n or type(n) ~= "number" then return tostring(n or 0) end
+    local str = tostring(math.floor(n))
+    local k
+    while true do
+        str, k = string.gsub(str, "^(-?%d+)(%d%d%d)", "%1,%2")
+        if k == 0 then break end
+    end
+    return str
+end
+
+function Hub:ResolveItemDisplayName(rawName, itemType)
+    if not rawName or rawName == "" then return "" end
+    if not ItemInfoModule then
+        pcall(function()
+            ItemInfoModule = require(Hub.Services.ReplicatedStorage.Shared.ItemInfo)
+        end)
+    end
+    if not ItemInfoModule then return rawName end
+    if itemType and ItemInfoModule[itemType] and ItemInfoModule[itemType][rawName] then
+        local entry = ItemInfoModule[itemType][rawName]
+        return entry.DisplayName or entry.Name or rawName
+    end
+    for _, cat in ipairs({"Emote", "Sword", "Explosion", "Ability", "Booth", "Character", "Title"}) do
+        if ItemInfoModule[cat] and ItemInfoModule[cat][rawName] then
+            local entry = ItemInfoModule[cat][rawName]
+            return entry.DisplayName or entry.Name or rawName
+        end
+    end
+    return rawName
+end
+
+function Hub:MatchesWatchlist(dispName, rawName)
+    if not self.Config.WatchlistItems or #self.Config.WatchlistItems == 0 then
+        return false
+    end
+    local cleanDisp = dispName and dispName:lower():gsub("%s+", " ") or ""
+    local cleanRaw = rawName and rawName:lower():gsub("%s+", " ") or ""
+    for _, watched in ipairs(self.Config.WatchlistItems) do
+        local query = tostring(watched):lower():gsub("%s+", " "):match("^%s*(.-)%s*$")
+        if query and query ~= "" then
+            if cleanDisp ~= "" and (cleanDisp == query or string.find(cleanDisp, query, 1, true)) then
+                return true, watched
+            end
+            if cleanRaw ~= "" and (cleanRaw == query or string.find(cleanRaw, query, 1, true)) then
+                return true, watched
+            end
+        end
+    end
+    return false
+end
+
+-- 5. ESP Watchlist Items (Dynamic Billboard above Booths listing Item Name, Amount, Price)
+function Hub:UpdateWatchlistEsp(enabled)
+    if not self.State.EspFolder then return end
+
+    if not enabled or not self.Config.WatchlistEsp or not self.Config.WatchlistItems or #self.Config.WatchlistItems == 0 then
+        for _, ch in ipairs(self.State.EspFolder:GetChildren()) do
+            if ch.Name:find("WatchlistStand_") then
+                ch:Destroy()
+            end
+        end
+        return
+    end
+
     local stands = Hub.Services.Workspace:FindFirstChild("Spawn") and Hub.Services.Workspace.Spawn:FindFirstChild("Hub") and Hub.Services.Workspace.Spawn.Hub:FindFirstChild("Stands")
-    if stands then
-        for _, s in ipairs(stands:GetChildren()) do
-            local conn = s:GetAttributeChangedSignal("Owner"):Connect(function()
-                if self.Config.EspMyBooth then
-                    self:UpdateMyBoothEsp(true)
+    if not stands then return end
+
+    local bc = nil
+    pcall(function()
+        bc = require(Hub.Services.ReplicatedStorage.Controllers.Booth.BoothController)
+    end)
+    if not bc or not bc.BoothListings then return end
+    local allListings = bc.BoothListings:Get()
+    if not allListings then return end
+
+    local activeWatchBillboards = {}
+
+    for i, s in ipairs(stands:GetChildren()) do
+        local ownerId = s:GetAttribute("Owner")
+        local bbName = "WatchlistStand_" .. tostring(i)
+
+        if ownerId and ownerId ~= 0 and allListings[tostring(ownerId)] then
+            local userListings = allListings[tostring(ownerId)]
+            local matching = {}
+
+            for listId, itemData in pairs(userListings) do
+                local rawName = itemData.ItemName or (itemData.Item and itemData.Item.Name) or ""
+                local dispName = self:ResolveItemDisplayName(rawName, itemData.Type)
+                if self:MatchesWatchlist(dispName, rawName) then
+                    table.insert(matching, {
+                        Name = dispName ~= "" and dispName or rawName,
+                        Amount = itemData.Amount or 1,
+                        Price = itemData.Price or 0
+                    })
                 end
-                if self.Config.MyBoothTracer then
-                    self:UpdateMyBoothTracer(true)
-                end
-                if self.Config.EspBooths then
-                    self:UpdateBoothsEsp(true)
-                end
-                -- If my booth was removed/lost while AutoClaimBooth is enabled:
-                if self.Config.AutoClaimBooth and not self:HasClaimedBooth() then
-                    task.spawn(function()
-                        task.wait(0.4)
-                        if self.Config.AutoClaimBooth and not self:HasClaimedBooth() then
-                            self:ClaimNearestBooth()
-                        end
+            end
+
+            if #matching > 0 then
+                local rootPart = s:FindFirstChild("Root") or s:FindFirstChildOfClass("BasePart")
+                if rootPart then
+                    activeWatchBillboards[bbName] = true
+
+                    -- Sort by price ascending
+                    table.sort(matching, function(a, b)
+                        return (a.Price or 0) < (b.Price or 0)
                     end)
+
+                    local maxDisplay = 6
+                    local totalMatches = #matching
+                    local displayRows = math.min(totalMatches, maxDisplay)
+                    local bbHeight = 22 + (displayRows * 18) + (totalMatches > maxDisplay and 14 or 0) + 6
+                    local bbWidth = 230
+
+                    local bb = self.State.EspFolder:FindFirstChild(bbName)
+                    if not bb then
+                        bb = Instance.new("BillboardGui")
+                        bb.Name = bbName
+                        bb.Size = UDim2.new(0, bbWidth, 0, bbHeight)
+                        bb.AlwaysOnTop = true
+                        bb.MaxDistance = 0
+                        bb.LightInfluence = 0
+                        bb.ResetOnSpawn = false
+                        bb.StudsOffset = Vector3.new(0, 7.2, 0)
+                        bb.Adornee = rootPart
+                        bb.Parent = self.State.EspFolder
+
+                        local frame = Instance.new("Frame")
+                        frame.Name = "BgFrame"
+                        frame.Size = UDim2.new(1, 0, 1, 0)
+                        frame.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+                        frame.BackgroundTransparency = 0.12
+                        frame.BorderSizePixel = 0
+                        frame.Parent = bb
+                        self:Corner(frame, 6)
+                        self:Stroke(frame, Color3.fromRGB(255, 205, 50), 1.5)
+
+                        local header = Instance.new("Frame")
+                        header.Name = "Header"
+                        header.Size = UDim2.new(1, 0, 0, 20)
+                        header.BackgroundTransparency = 1
+                        header.Parent = frame
+
+                        local badge = Instance.new("TextLabel")
+                        badge.Name = "Badge"
+                        badge.Size = UDim2.new(1, -12, 1, 0)
+                        badge.Position = UDim2.new(0, 8, 0, 2)
+                        badge.BackgroundTransparency = 1
+                        badge.Font = Enum.Font.GothamBold
+                        badge.Text = "🎯 НАЙДЕНО В ЛАВКЕ"
+                        badge.TextColor3 = Color3.fromRGB(255, 215, 0)
+                        badge.TextSize = 10
+                        badge.TextXAlignment = Enum.TextXAlignment.Left
+                        badge.Parent = header
+
+                        local itemsContainer = Instance.new("Frame")
+                        itemsContainer.Name = "ItemsContainer"
+                        itemsContainer.Size = UDim2.new(1, -16, 1, -24)
+                        itemsContainer.Position = UDim2.new(0, 8, 0, 20)
+                        itemsContainer.BackgroundTransparency = 1
+                        itemsContainer.Parent = frame
+
+                        local listLayout = Instance.new("UIListLayout")
+                        listLayout.Name = "Layout"
+                        listLayout.FillDirection = Enum.FillDirection.Vertical
+                        listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+                        listLayout.Padding = UDim.new(0, 2)
+                        listLayout.Parent = itemsContainer
+                    else
+                        bb.Adornee = rootPart
+                        bb.Size = UDim2.new(0, bbWidth, 0, bbHeight)
+                    end
+
+                    local frame = bb:FindFirstChild("BgFrame")
+                    local itemsContainer = frame and frame:FindFirstChild("ItemsContainer")
+                    if itemsContainer then
+                        for _, child in ipairs(itemsContainer:GetChildren()) do
+                            if child:IsA("TextLabel") then
+                                child:Destroy()
+                            end
+                        end
+
+                        for idx = 1, displayRows do
+                            local item = matching[idx]
+                            local row = Instance.new("TextLabel")
+                            row.Name = "Row_" .. tostring(idx)
+                            row.LayoutOrder = idx
+                            row.Size = UDim2.new(1, 0, 0, 16)
+                            row.BackgroundTransparency = 1
+                            row.Font = Enum.Font.GothamMedium
+                            row.RichText = true
+                            row.Text = string.format("<b><font color=\"#FFFFFF\">%s</font></b> <font color=\"#80C0FF\">x%s</font>  <font color=\"#FFD700\"><b>%s 🪙</b></font>",
+                                item.Name,
+                                tostring(item.Amount),
+                                FormatNumber(item.Price)
+                            )
+                            row.TextSize = 11
+                            row.TextXAlignment = Enum.TextXAlignment.Left
+                            row.TextStrokeTransparency = 0.5
+                            row.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                            row.Parent = itemsContainer
+                        end
+
+                        if totalMatches > maxDisplay then
+                            local moreRow = Instance.new("TextLabel")
+                            moreRow.Name = "MoreRow"
+                            moreRow.LayoutOrder = maxDisplay + 1
+                            moreRow.Size = UDim2.new(1, 0, 0, 14)
+                            moreRow.BackgroundTransparency = 1
+                            moreRow.Font = Enum.Font.GothamMedium
+                            moreRow.Text = string.format("... и еще %d предм.", totalMatches - maxDisplay)
+                            moreRow.TextColor3 = Color3.fromRGB(180, 180, 195)
+                            moreRow.TextSize = 9
+                            moreRow.TextXAlignment = Enum.TextXAlignment.Left
+                            moreRow.Parent = itemsContainer
+                        end
+                    end
                 end
-            end)
-            table.insert(self.State.Connections, conn)
+            end
         end
     end
 
-    -- Background loop
+    for _, ch in ipairs(self.State.EspFolder:GetChildren()) do
+        if ch.Name:find("WatchlistStand_") and not activeWatchBillboards[ch.Name] then
+            ch:Destroy()
+        end
+    end
+end
+
+-- Safe Real-time ESP & Booth Watcher (Passive polling without hooking workspace instances)
+function Hub:SetupEspUpdater()
+    if self.State.EspWatcherRunning then return end
+    self.State.EspWatcherRunning = true
+
+    -- Real-time BoothListings:OnChange connection for instant watchlist updates
+    if not self.State.WatchlistListingConn then
+        pcall(function()
+            local bc = require(Hub.Services.ReplicatedStorage.Controllers.Booth.BoothController)
+            if bc and bc.BoothListings and bc.BoothListings.OnChange then
+                self.State.WatchlistListingConn = bc.BoothListings:OnChange(function()
+                    if self.Config.WatchlistEsp then
+                        task.spawn(function()
+                            self:UpdateWatchlistEsp(true)
+                        end)
+                    end
+                end)
+            end
+        end)
+    end
+
     task.spawn(function()
-        while task.wait(2.5) do
-            if self.Config.AutoClaimBooth and not self:HasClaimedBooth() then
-                self:ClaimNearestBooth()
+        while task.wait(3.5) do
+            if self.Config.EspMyBooth then
+                pcall(function() self:UpdateMyBoothEsp(true) end)
             end
             if self.Config.MyBoothTracer then
-                self:UpdateMyBoothTracer(true)
+                pcall(function() self:UpdateMyBoothTracer(true) end)
+            end
+            if self.Config.EspBooths then
+                pcall(function() self:UpdateBoothsEsp(true) end)
+            end
+            if self.Config.WatchlistEsp then
+                pcall(function() self:UpdateWatchlistEsp(true) end)
+            end
+            if self.Config.AutoClaimBooth and not self:HasClaimedBooth() then
+                pcall(function() self:ClaimNearestBooth() end)
             end
         end
     end)
 end
 
--- Helper: Get Booth Item under Mouse or Click Position (100% passive, no button hooking)
+-- Helper: Get Booth Item under Mouse or Click Position (100% passive, supports all skins & booth views)
 function Hub:GetBoothItemAtPosition(posX, posY)
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     if not pg then return nil end
     local guis = pg:GetGuiObjectsAtPosition(posX, posY)
     for _, g in ipairs(guis) do
-        local pb = g:FindFirstAncestor("PlayersBooth")
-        if pb then
-            local card = g
-            while card and card.Parent and card.Parent.Name ~= "ScrollingList" and card ~= pb do
-                card = card.Parent
-            end
-            if card and card.Parent and card.Parent.Name == "ScrollingList" then
-                local lbl = card:FindFirstChild("ItemName", true)
-                if lbl and lbl:IsA("TextLabel") and lbl.Text ~= "" and lbl.Text ~= "ItemName" then
-                    return lbl.Text
+        local current = g
+        for _ = 1, 7 do
+            if not current or current == pg then break end
+            local lbl = current:FindFirstChild("ItemName", true)
+            if lbl and lbl:IsA("TextLabel") and lbl.Text ~= "" and lbl.Text ~= "ItemName" and lbl.Text ~= "Booth Name" then
+                local rawText = lbl.Text:gsub("<[^>]->", ""):gsub("[\r\n\t]+", " ")
+                rawText = rawText:gsub("%s*%(x%d+%)", ""):gsub("%s*%[.-%]", "")
+                rawText = rawText:match("^%s*(.-)%s*$") or rawText
+                if rawText ~= "" then
+                    return rawText
                 end
             end
+            current = current.Parent
         end
     end
     return nil
@@ -739,56 +957,347 @@ function Hub:SetupBoothItemTracker()
     table.insert(self.State.Connections, conn)
 end
 
--- Helper: Look up item category and exact name from game database
+-- Helper: Fast Load & Anti-Freeze (Skips intro cutscenes, blackouts & popups)
+function Hub:ApplyFastLoad()
+    if not self.Config.FastLoad then return end
+
+    pcall(function()
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        if not pg then return end
+
+        local sc = pg:FindFirstChild("SkipCutscene")
+        if sc and sc:FindFirstChild("Skip") then
+            if firesignal then
+                firesignal(sc.Skip.Activated)
+            else
+                for _, c in ipairs(getconnections(sc.Skip.Activated)) do c:Fire() end
+            end
+        end
+
+        local co = pg:FindFirstChild("CutsceneOutside")
+        if co then co.Enabled = false end
+
+        local dlg = pg:FindFirstChild("Dialogue")
+        if dlg then dlg.Enabled = false end
+
+        local isb = pg:FindFirstChild("IndexScreenBlackout")
+        if isb and not self.State.IsSearchingSellers then isb.Enabled = false end
+
+        local rpb = pg:FindFirstChild("RobloxPurchaseScreenBlackout")
+        if rpb then rpb.Enabled = false end
+    end)
+
+    if not self.State.FastLoadWatcher then
+        self.State.FastLoadWatcher = true
+        task.spawn(function()
+            while task.wait(1.5) do
+                if self.Config.FastLoad then
+                    pcall(function()
+                        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+                        if not pg then return end
+
+                        local sc = pg:FindFirstChild("SkipCutscene")
+                        if sc and sc.Enabled and sc:FindFirstChild("Skip") then
+                            if firesignal then firesignal(sc.Skip.Activated) end
+                        end
+
+                        local co = pg:FindFirstChild("CutsceneOutside")
+                        if co and co.Enabled then co.Enabled = false end
+
+                        local isb = pg:FindFirstChild("IndexScreenBlackout")
+                        if isb and isb.Enabled and not self.State.IsSearchingSellers then
+                            isb.Enabled = false
+                        end
+                    end)
+                end
+            end
+        end)
+    end
+end
+
+-- Helper: Auto-Teleport to Seller's Server via Index
+function Hub:TeleportToSeller(targetItem)
+    local itemName = targetItem or self.Config.TeleportItemName
+    if not itemName or itemName:gsub("%s+", "") == "" then
+        self:Notify("Teleport", "Введи название предмета для ТП!")
+        return
+    end
+
+    local cat, exactName = self:FindItemCategory(itemName)
+    self:Notify("Teleport", "Поиск продавца для: " .. exactName .. " (" .. cat .. ")...")
+
+    local okRap, rc = pcall(function()
+        return require(Hub.Services.ReplicatedStorage.Controllers.Trading.RAPChartController)
+    end)
+    local okIdx, ic = pcall(function()
+        return require(Hub.Services.ReplicatedStorage.Controllers.Trading.IndexController)
+    end)
+
+    if not okRap or not rc or not okIdx or not ic then
+        self:Notify("Teleport", "Ошибка контроллеров игры")
+        return
+    end
+
+    self.State.IsSearchingSellers = true
+
+    task.spawn(function()
+        pcall(function()
+            ic:Open()
+            ic:SetPage(cat)
+            rc:Render("Index", cat, Hub.Services.HttpService:JSONEncode({{"Name", exactName}}))
+        end)
+
+        task.wait(0.5)
+
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        local btn = pg and pg:FindFirstChild("Index") and pg.Index:FindFirstChild("Main") and pg.Index.Main:FindFirstChild("Right") and pg.Index.Main.Right:FindFirstChild("ShowSellers")
+
+        if not btn then
+            self.State.IsSearchingSellers = false
+            self:Notify("Teleport", "Кнопка 'Find Seller' не найдена")
+            return
+        end
+
+        pcall(function()
+            if firesignal then
+                firesignal(btn.Activated)
+            else
+                for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() end
+            end
+        end)
+
+        local startTime = tick()
+        local clicked = false
+
+        while tick() - startTime < 6 do
+            task.wait(0.2)
+            if pg then
+                for _, containerName in ipairs({"Prompts", "Index", "Notifications", "RobloxGui"}) do
+                    local container = pg:FindFirstChild(containerName)
+                    if container then
+                        for _, d in ipairs(container:GetDescendants()) do
+                            if (d:IsA("TextButton") or d:IsA("ImageButton")) and d.Visible then
+                                local text = d:IsA("TextButton") and d.Text or ""
+                                local lbl = d:FindFirstChildWhichIsA("TextLabel")
+                                if lbl and lbl.Text ~= "" then
+                                    text = text .. " " .. lbl.Text
+                                end
+                                local lower = text:lower():gsub("%s+", "")
+                                if lower:find("yes") or lower:find("да") or lower:find("teleport") or lower:find("confirm") or lower:find("тп") then
+                                    pcall(function()
+                                        if firesignal then
+                                            firesignal(d.Activated)
+                                        else
+                                            for _, c in ipairs(getconnections(d.Activated)) do c:Fire() end
+                                            for _, c in ipairs(getconnections(d.MouseButton1Click)) do c:Fire() end
+                                        end
+                                    end)
+                                    clicked = true
+                                    self:Notify("Teleport", "Подтверждено! Телепортация...")
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    if clicked then break end
+                end
+            end
+            if clicked then break end
+        end
+
+        task.wait(1.5)
+        self.State.IsSearchingSellers = false
+        pcall(function()
+            if pg and pg:FindFirstChild("IndexScreenBlackout") then
+                pg.IndexScreenBlackout.Enabled = false
+            end
+        end)
+
+        if not clicked then
+            self:Notify("Teleport", "Продавцы не найдены или сервер не отвечает")
+        end
+    end)
+end
+
+-- Helper: Look up item category and exact name from game database (supports all 5,353 items)
 function Hub:FindItemCategory(targetName)
-    local targetLower = targetName:lower()
+    if not targetName or targetName == "" then
+        return "Sword", targetName
+    end
+
+    local cleanName = targetName:gsub("<[^>]->", ""):gsub("[\r\n\t]+", " ")
+    cleanName = cleanName:gsub("%s*%(x%d+%)", ""):gsub("%s*%[.-%]", "")
+    cleanName = cleanName:match("^%s*(.-)%s*$") or cleanName
+    local targetLower = cleanName:lower()
+
     local ok, ItemInfo = pcall(function()
         return require(Hub.Services.ReplicatedStorage.Shared.ItemInfo)
     end)
+
     if ok and type(ItemInfo) == "table" then
-        -- 1. Exact match
-        for catName, items in pairs(ItemInfo) do
+        local categories = {"Sword", "Emote", "Explosion", "Ability", "Booth", "Title"}
+
+        -- 1. Exact key match
+        for _, cat in ipairs(categories) do
+            local items = ItemInfo[cat]
             if type(items) == "table" then
-                for name, data in pairs(items) do
-                    if type(name) == "string" and name:lower() == targetLower then
-                        return catName, name
+                if items[cleanName] then
+                    local entry = items[cleanName]
+                    local disp = type(entry) == "table" and (entry.DisplayName or entry.Name) or cleanName
+                    return cat, disp
+                end
+                for k, v in pairs(items) do
+                    if tostring(k):lower() == targetLower then
+                        local disp = type(v) == "table" and (v.DisplayName or v.Name) or tostring(k)
+                        return cat, disp
                     end
-                    if type(data) == "table" and type(data.DisplayName) == "string" and data.DisplayName:lower() == targetLower then
-                        return catName, name
+                    if type(v) == "table" and type(v.DisplayName) == "string" and v.DisplayName:lower() == targetLower then
+                        return cat, v.DisplayName
                     end
                 end
             end
         end
-        -- 2. Partial match
-        for catName, items in pairs(ItemInfo) do
-            if type(items) == "table" then
-                for name, data in pairs(items) do
-                    if type(name) == "string" and name:lower():find(targetLower, 1, true) then
-                        return catName, name
+
+        -- 2. Check full ItemInfos catalog (all 5,353 items)
+        local allItems = ItemInfo.ItemInfos
+        if type(allItems) == "table" then
+            for _, item in ipairs(allItems) do
+                local n = item.Name and tostring(item.Name) or ""
+                local d = item.DisplayName and tostring(item.DisplayName) or ""
+                if n:lower() == targetLower or d:lower() == targetLower then
+                    local realName = d ~= "" and d or n
+                    local cat = "Sword"
+                    if ItemInfo.Sword and ItemInfo.Sword[n] then cat = "Sword"
+                    elseif ItemInfo.Explosion and ItemInfo.Explosion[n] then cat = "Explosion"
+                    elseif ItemInfo.Emote and ItemInfo.Emote[n] then cat = "Emote"
+                    elseif ItemInfo.Ability and ItemInfo.Ability[n] then cat = "Ability"
                     end
-                    if type(data) == "table" and type(data.DisplayName) == "string" and data.DisplayName:lower():find(targetLower, 1, true) then
-                        return catName, name
+                    return cat, realName
+                end
+            end
+
+            -- Substring / partial match on full catalog
+            for _, item in ipairs(allItems) do
+                local n = item.Name and tostring(item.Name) or ""
+                local d = item.DisplayName and tostring(item.DisplayName) or ""
+                local nLower, dLower = n:lower(), d:lower()
+                if (dLower ~= "" and (dLower:find(targetLower, 1, true) or targetLower:find(dLower, 1, true)))
+                    or (nLower ~= "" and (nLower:find(targetLower, 1, true) or targetLower:find(nLower, 1, true))) then
+                    local realName = d ~= "" and d or n
+                    local cat = "Sword"
+                    if ItemInfo.Sword and ItemInfo.Sword[n] then cat = "Sword"
+                    elseif ItemInfo.Explosion and ItemInfo.Explosion[n] then cat = "Explosion"
+                    elseif ItemInfo.Emote and ItemInfo.Emote[n] then cat = "Emote"
+                    elseif ItemInfo.Ability and ItemInfo.Ability[n] then cat = "Ability"
                     end
+                    return cat, realName
                 end
             end
         end
     end
-    return "Sword", targetName
+
+    return "Sword", cleanName
 end
 
--- 6. Open Selected Item in Index (Opens native ShowRoom + RAP Chart like Screenshot 2)
-function Hub:OpenSelectedItemInIndex()
+-- 6. Close Isolated Index Statistics cleanly
+function Hub:CloseIndexStats()
+    self.State.InStatsMode = false
+
+    local okRap, RAPChartController = pcall(function()
+        return require(Hub.Services.ReplicatedStorage.Controllers.Trading.RAPChartController)
+    end)
+    local okIdx, IndexController = pcall(function()
+        return require(Hub.Services.ReplicatedStorage.Controllers.Trading.IndexController)
+    end)
+
+    pcall(function()
+        if okRap and RAPChartController then
+            RAPChartController:Close("Index")
+        end
+    end)
+    pcall(function()
+        if okIdx and IndexController and type(IndexController.SetPage) == "function" then
+            IndexController:SetPage("Sword")
+        end
+        if okIdx and IndexController and type(IndexController.Close) == "function" then
+            IndexController:Close()
+        end
+    end)
+    pcall(function()
+        local cam = Hub.Services.Workspace.CurrentCamera
+        local indexModel = cam and cam:FindFirstChild("Index")
+        if indexModel then
+            indexModel:Destroy()
+        end
+        if cam then
+            cam.CameraType = Enum.CameraType.Custom
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                cam.CameraSubject = LocalPlayer.Character.Humanoid
+            end
+        end
+    end)
+
+    local indexGui = LocalPlayer.PlayerGui:FindFirstChild("Index")
+    if indexGui then
+        indexGui.Enabled = false
+        indexGui.DisplayOrder = 0
+
+        pcall(function()
+            local main = indexGui:FindFirstChild("Main")
+            if main then
+                main.BackgroundTransparency = 1
+                main.Visible = true
+                if main:FindFirstChild("Right") then main.Right.Visible = true end
+                if main:FindFirstChild("Close") then main.Close.Visible = true end
+                local left = main:FindFirstChild("Left")
+                local ml = left and left:FindFirstChild("MainLabel")
+                if ml then
+                    ml.ImageTransparency = 0
+                    for _, c in ipairs(ml:GetChildren()) do
+                        if c:IsA("GuiObject") and c.Name ~= "RapChart" and c.Name ~= "UIAspectRatioConstraint" then
+                            if c.Name == "ItemPreview" then
+                                c.Visible = false
+                            else
+                                c.Visible = true
+                            end
+                        end
+                    end
+                    local rc = ml:FindFirstChild("RapChart")
+                    if rc then
+                        rc.Visible = false
+                        local frame = rc:FindFirstChild("Frame")
+                        if frame then
+                            if frame:FindFirstChild("BackButton") then
+                                frame.BackButton.Visible = true
+                            end
+                            if frame:FindFirstChild("CustomCloseBtn") then
+                                frame.CustomCloseBtn.Visible = false
+                            end
+                            if frame:FindFirstChild("CustomDarkBg") then
+                                frame.CustomDarkBg.Visible = false
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- 7. Open Selected Item in Index (Opens isolated RAP Chart with snug dark background)
+function Hub:OpenSelectedItemInIndex(overrideItem)
     -- 1. Check currently hovered item on screen
-    local itemName = self:GetHoveredBoothItem()
+    local itemName = overrideItem or self:GetHoveredBoothItem()
 
     -- 2. Fallback to last selected booth item
     if not itemName or itemName == "" then
         itemName = self.State.LastSelectedBoothItem
     end
 
-    -- 3. Fallback to any visible item in open PlayersBooth
+    -- 3. Fallback to any visible item in open PlayersBooth / EditBooth
     if not itemName or itemName == "" then
-        local boothGui = LocalPlayer.PlayerGui:FindFirstChild("Booth")
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        local boothGui = pg and pg:FindFirstChild("Booth")
         if boothGui then
             local pb = boothGui:FindFirstChild("PlayersBooth")
             if pb and pb.Visible then
@@ -803,91 +1312,114 @@ function Hub:OpenSelectedItemInIndex()
     end
 
     if not itemName or itemName == "" then
-        self:Notify("Index", "Наведи мышь на скин или нажми на предмет на стенде!")
+        self:Notify("Index", "Наведи и нажми бинд!")
         return
     end
 
     local cat, exactName = self:FindItemCategory(itemName)
 
-    local ok, IndexController = pcall(function()
-        return require(Hub.Services.ReplicatedStorage.Controllers.Trading.IndexController)
+    local okRap, RAPChartController = pcall(function()
+        return require(Hub.Services.ReplicatedStorage.Controllers.Trading.RAPChartController)
     end)
 
-    if ok and IndexController and type(IndexController.Preview) == "function" then
-        pcall(function()
-            local ml = LocalPlayer.PlayerGui.Index.Main.Left.MainLabel
-            if ml.RapChart and ml.RapChart.Visible then
-                ml.RapChart.Visible = false
-            end
-        end)
-
-        IndexController:Preview(cat, exactName)
-        task.wait(0.25)
-
-        pcall(function()
-            local itemPreview = LocalPlayer.PlayerGui.Index.Main.Left.MainLabel:FindFirstChild("ItemPreview")
-            local rapBtn = itemPreview and itemPreview:FindFirstChild("RapButton", true)
-            local firesignal = firesignal or function(sig, ...)
-                for _, c in ipairs(getconnections(sig)) do c:Fire(...) end
-            end
-            if rapBtn then
-                firesignal(rapBtn.Activated)
-            end
-        end)
-
-        self:Notify("Index", "Открыт в Index: " .. exactName)
-        return
+    if okRap and RAPChartController and type(RAPChartController.Render) == "function" then
+        RAPChartController:Render("Index", cat, Hub.Services.HttpService:JSONEncode({{"Name", exactName}}))
     end
 
-    -- Fallback manual UI navigation
+    self.State.InStatsMode = true
+
     local indexGui = LocalPlayer.PlayerGui:FindFirstChild("Index")
-    if not indexGui or not indexGui:FindFirstChild("Main") then
-        self:Notify("Index", "GUI Index не найден!")
-        return
-    end
+    if indexGui and indexGui:FindFirstChild("Main") then
+        indexGui.DisplayOrder = 1000
+        indexGui.Enabled = true
 
-    indexGui.Enabled = true
-    indexGui.Main.Visible = true
+        local main = indexGui.Main
+        main.Visible = true
+        main.BackgroundTransparency = 1
+        if main:FindFirstChild("Right") then main.Right.Visible = false end
+        if main:FindFirstChild("Close") then main.Close.Visible = false end
 
-    local ml = indexGui.Main:FindFirstChild("Left") and indexGui.Main.Left:FindFirstChild("MainLabel")
-    if not ml then return end
+        local left = main:FindFirstChild("Left")
+        local ml = left and left:FindFirstChild("MainLabel")
+        if ml then
+            ml.ImageTransparency = 1
 
-    local firesignal = firesignal or function(sig, ...)
-        for _, c in ipairs(getconnections(sig)) do c:Fire(...) end
-    end
+            for _, c in ipairs(ml:GetChildren()) do
+                if c:IsA("GuiObject") and c.Name ~= "RapChart" and c.Name ~= "UIAspectRatioConstraint" then
+                    c.Visible = false
+                end
+            end
+            local rc = ml:FindFirstChild("RapChart")
+            if rc then
+                rc.Visible = true
+                local frame = rc:FindFirstChild("Frame")
+                if frame then
+                    -- 1. Custom Solid Dark Card Background (Snug ~6px top padding, no large forehead)
+                    local darkBg = frame:FindFirstChild("CustomDarkBg")
+                    if not darkBg then
+                        darkBg = Instance.new("Frame")
+                        darkBg.Name = "CustomDarkBg"
+                        darkBg.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+                        darkBg.BackgroundTransparency = 0.04
+                        darkBg.BorderSizePixel = 0
+                        darkBg.ZIndex = 0
 
-    local searchBox = ml:FindFirstChild("ItemSearch") and ml.ItemSearch:FindFirstChildWhichIsA("TextBox", true)
-    if not searchBox then return end
+                        local corner = Instance.new("UICorner")
+                        corner.CornerRadius = UDim.new(0, 12)
+                        corner.Parent = darkBg
 
-    local folder = ml:FindFirstChild("ItemsList") and ml.ItemsList:FindFirstChild("Folder")
-    local top = ml:FindFirstChild("Top")
-    local catBtn = top and top:FindFirstChild(cat)
-    if catBtn then
-        firesignal(catBtn.Activated)
-        task.wait(0.06)
-    end
+                        local stroke = Instance.new("UIStroke")
+                        stroke.Color = Color3.fromRGB(48, 50, 68)
+                        stroke.Thickness = 1.5
+                        stroke.Parent = darkBg
 
-    searchBox.Text = exactName
-    firesignal(searchBox.FocusLost, true)
-    task.wait(0.2)
+                        darkBg.Parent = frame
+                    end
+                    darkBg.Position = UDim2.new(-0.04, 0, -0.04, 0)
+                    darkBg.Size = UDim2.new(1.08, 0, 1.14, 0)
+                    darkBg.Visible = true
 
-    if folder then
-        for _, itemBtn in ipairs(folder:GetChildren()) do
-            if itemBtn:IsA("GuiObject") and itemBtn.Visible then
-                local nameLbl = itemBtn:FindFirstChildWhichIsA("TextLabel", true)
-                if nameLbl and nameLbl.Text:lower() == exactName:lower() then
-                    firesignal(itemBtn.Activated)
-                    task.wait(0.15)
-                    local curPreview = ml:FindFirstChild("ItemPreview")
-                    local rapBtn = curPreview and curPreview:FindFirstChild("RapButton", true)
-                    if rapBtn then firesignal(rapBtn.Activated) end
-                    break
+                    -- 2. Hide BackButton arrow
+                    local backBtn = frame:FindFirstChild("BackButton")
+                    if backBtn then
+                        backBtn.Visible = false
+                    end
+
+                    -- 3. Custom Close Button [X]
+                    local closeBtn = frame:FindFirstChild("CustomCloseBtn")
+                    if not closeBtn then
+                        closeBtn = Instance.new("TextButton")
+                        closeBtn.Name = "CustomCloseBtn"
+                        closeBtn.Size = UDim2.new(0, 24, 0, 24)
+                        closeBtn.Position = UDim2.new(1, -2, 0, 0)
+                        closeBtn.AnchorPoint = Vector2.new(1, 0)
+                        closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+                        closeBtn.Text = "X"
+                        closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                        closeBtn.Font = Enum.Font.GothamBold
+                        closeBtn.TextSize = 13
+                        closeBtn.ZIndex = 100
+                        closeBtn.AutoButtonColor = true
+
+                        local corner = Instance.new("UICorner")
+                        corner.CornerRadius = UDim.new(0, 6)
+                        corner.Parent = closeBtn
+                        closeBtn.Parent = frame
+                    end
+                    closeBtn.Visible = true
+
+                    if self.State.StatsCloseConn then
+                        self.State.StatsCloseConn:Disconnect()
+                    end
+                    self.State.StatsCloseConn = closeBtn.MouseButton1Click:Connect(function()
+                        self:CloseIndexStats()
+                    end)
                 end
             end
         end
     end
 
-    self:Notify("Index", "Открыт в Index: " .. exactName)
+    self:Notify("Index", "Открыто: " .. exactName)
 end
 
 -- 6. Discord Webhook Sender
@@ -955,51 +1487,71 @@ function Hub:SendDiscordWebhook(data)
     end)
 end
 
--- 7. Monitor Booth Sales (Session Profit Tracker & Webhook)
-function Hub:SetupProfitWatcher()
-    for _, v in ipairs(Hub.Services.ReplicatedStorage:GetDescendants()) do
-        if v.Name == "RE/AddToBoothHistory" and v:IsA("RemoteEvent") then
-            local conn = v.OnClientEvent:Connect(function(data, extra)
-                local name = "Unknown Item"
-                local price = 0
-                local icon = "rbxassetid://7734053495"
-                local buyer = "Plaza Buyer"
-
-                if type(data) == "table" then
-                    name = tostring(data.ItemName or data.Name or data.Item or "Item")
-                    price = tonumber(data.Price or data.Tokens or data.Amount) or 0
-                    icon = tostring(data.Icon or data.Image or icon)
-                    buyer = tostring(data.Buyer or data.BuyerName or buyer)
-                elseif type(data) == "string" then
-                    name = data
-                    price = tonumber(extra) or 0
-                end
-
-                Hub.State.SessionProfit = Hub.State.SessionProfit + price
-                table.insert(Hub.State.SoldHistory, 1, {
-                    Name = name,
-                    Price = price,
-                    Icon = icon,
-                    Time = os.date and os.date("%H:%M:%S") or "Now"
-                })
-
-                if Hub.State.RefreshProfitUI then
-                    Hub.State.RefreshProfitUI()
-                end
-                Hub:Notify("Продажа на стенде!", name .. " продан за " .. tostring(price) .. " токенов!")
-
-                -- Trigger Discord Webhook
-                Hub:SendDiscordWebhook({
-                    Name = name,
-                    Price = price,
-                    Icon = icon,
-                    Buyer = buyer
-                })
-            end)
-            table.insert(Hub.State.Connections, conn)
-            break
+-- 7. Real-time Item Value & Exist Lookups (Passive Replion cache reader)
+function Hub:LookupItemRAP(itemName)
+    local ok, res, foundCat = pcall(function()
+        local rep = Hub.Services.ReplicatedStorage
+        local replionModule = rep:FindFirstChild("Replion", true)
+        if not replionModule then return nil end
+        local Replion = require(replionModule)
+        local r = Replion.Client:GetReplion("ItemRAP")
+        if not r then return nil end
+        local items = r:Get() and r:Get().Items
+        if not items then return nil end
+        local key = '[["Name","' .. itemName .. '"]]'
+        for cat, list in pairs(items) do
+            if type(list) == "table" and list[key] then
+                return list[key], cat
+            end
         end
+        -- Case-insensitive search if exact key failed
+        local lowerName = itemName:lower()
+        for cat, list in pairs(items) do
+            if type(list) == "table" then
+                for k, rapVal in pairs(list) do
+                    if k:lower():find(lowerName, 1, true) then
+                        return rapVal, cat
+                    end
+                end
+            end
+        end
+        return nil
+    end)
+    if ok and res then
+        return res, foundCat
     end
+    return nil
+end
+
+function Hub:LookupItemExist(itemName)
+    local ok, res = pcall(function()
+        local rep = Hub.Services.ReplicatedStorage
+        local replionModule = rep:FindFirstChild("Replion", true)
+        if not replionModule then return nil end
+        local Replion = require(replionModule)
+        local r = Replion.Client:GetReplion("ClientExistCount")
+        if not r then return nil end
+        local items = r:Get() and r:Get().Items
+        if not items then return nil end
+        local key = '[["Name","' .. itemName .. '"]]'
+        for cat, list in pairs(items) do
+            if type(list) == "table" and list[key] then
+                return list[key], cat
+            end
+        end
+        local lowerName = itemName:lower()
+        for cat, list in pairs(items) do
+            if type(list) == "table" then
+                for k, existVal in pairs(list) do
+                    if k:lower():find(lowerName, 1, true) then
+                        return existVal, cat
+                    end
+                end
+            end
+        end
+        return nil
+    end)
+    return ok and res or nil
 end
 
 -- ==================== CONFIG MANAGER ====================
@@ -1113,6 +1665,18 @@ function Hub:LoadConfig(name)
                     else
                         self.Config[k] = v
                     end
+                    if self.State.ConfigControls and self.State.ConfigControls[k] then
+                        pcall(self.State.ConfigControls[k], self.Config[k])
+                    end
+                end
+                if self.State.RefreshWatchlistUI then
+                    pcall(self.State.RefreshWatchlistUI)
+                end
+                if self.State.UpdateTeleportInput then
+                    pcall(self.State.UpdateTeleportInput, self.Config.TeleportItemName or "")
+                end
+                if self.Config.WatchlistEsp then
+                    pcall(function() self:UpdateWatchlistEsp(true) end)
                 end
                 self:Notify("Config", "Config '" .. name .. "' loaded!")
                 return true
@@ -1233,23 +1797,10 @@ function Hub:BuildUI()
     })
     topDivGrad.Parent = topDivider
 
-    -- LOGO
-    local logoAsset = self:GetLogoAsset()
-    local topLogo = Instance.new("ImageLabel")
-    topLogo.Name = "TopBarLogo"
-    topLogo.AnchorPoint = Vector2.new(0, 0.5)
-    topLogo.Position = UDim2.new(0, 14, 0.5, 0)
-    topLogo.Size = UDim2.new(0, 24, 0, 24)
-    topLogo.BackgroundTransparency = 1
-    topLogo.Image = logoAsset
-    topLogo.ScaleType = Enum.ScaleType.Fit
-    topLogo.ZIndex = 23
-    topLogo.Parent = topbar
-
-    -- TITLE: DYNAMIC
+    -- TITLE: DYNAMIC (No Logo Image)
     local logoShadow = Instance.new("TextLabel")
     logoShadow.Name = "LogoShadow"
-    logoShadow.Position = UDim2.new(0, 46, 0.5, 1)
+    logoShadow.Position = UDim2.new(0, 16, 0.5, 1)
     logoShadow.AnchorPoint = Vector2.new(0, 0.5)
     logoShadow.Size = UDim2.new(0, 120, 0, 26)
     logoShadow.BackgroundTransparency = 1
@@ -1264,7 +1815,7 @@ function Hub:BuildUI()
 
     local logoLabel = Instance.new("TextLabel")
     logoLabel.Name = "LogoLabel"
-    logoLabel.Position = UDim2.new(0, 46, 0.5, 0)
+    logoLabel.Position = UDim2.new(0, 16, 0.5, 0)
     logoLabel.AnchorPoint = Vector2.new(0, 0.5)
     logoLabel.Size = UDim2.new(0, 120, 0, 26)
     logoLabel.BackgroundTransparency = 1
@@ -1379,10 +1930,19 @@ function Hub:BuildUI()
     self:SetupDragging(topbar, main, shadow)
     self:SetupKeybind()
     self:SetupKickWatcher()
-    self:SetupProfitWatcher()
     self:SetupEspUpdater()
     self:SetupBoothItemTracker()
     self:SetupAutoServerHopWatcher()
+
+    if self.Config.CloseGuiOnStart then
+        main.Visible = false
+        if shadow then shadow.Visible = false end
+        self.State.IsOpen = false
+    else
+        main.Visible = true
+        if shadow then shadow.Visible = true end
+        self.State.IsOpen = true
+    end
 end
 
 -- TAB CREATION
@@ -1628,7 +2188,7 @@ function Hub:CreateInfoRow(parent, labelText, valueText, valueColor)
 end
 
 -- TOGGLE
-function Hub:CreateToggle(parent, title, defaultState, callback)
+function Hub:CreateToggle(parent, title, defaultState, callback, configKey)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, 0, 0, 28)
     row.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
@@ -1665,7 +2225,7 @@ function Hub:CreateToggle(parent, title, defaultState, callback)
     self:Corner(circle, 7)
 
     local state = defaultState
-    local function setVisual(newState)
+    local function setVisual(newState, silent)
         state = newState
         local targetColor = state and self.Theme.Accent or Color3.fromRGB(34, 34, 44)
         local targetPos = state and UDim2.new(1, -14, 0.5, -6.5) or UDim2.new(0, 1, 0.5, -6.5)
@@ -1676,8 +2236,14 @@ function Hub:CreateToggle(parent, title, defaultState, callback)
         self:Tween(circle, { Position = targetPos, BackgroundColor3 = knobColor }, 0.18)
         self:Tween(lbl, { TextColor3 = textColor }, 0.18)
 
-        if callback then
+        if not silent and callback then
             callback(state)
+        end
+    end
+
+    if configKey then
+        self.State.ConfigControls[configKey] = function(newVal)
+            setVisual(newVal, true)
         end
     end
 
@@ -1789,7 +2355,8 @@ function Hub:CreateKeybind(parent, title, defaultKey, callback)
     return row
 end
 
--- HELPER: Dynamic block key / mouse reader for Blade Ball
+
+-- Auto Strike / Parry Key Detection & Action for Anti-AFK
 function Hub:GetBlockKeyInfo()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     local hotbar = pg and pg:FindFirstChild("Hotbar")
@@ -1819,32 +2386,6 @@ function Hub:GetBlockKeyInfo()
     end
 
     return Enum.KeyCode.F
-end
-
-function Hub:PerformBlockStrike()
-    local keyInfo = self:GetBlockKeyInfo()
-    local vim = self.Services.VirtualInputManager
-    if not vim then
-        if self.Services.VirtualUser then
-            self.Services.VirtualUser:CaptureController()
-            self.Services.VirtualUser:ClickButton2(Vector2.new())
-        end
-        return
-    end
-
-    if keyInfo == "Mouse1" then
-        vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-        task.wait(0.04)
-        vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-    elseif keyInfo == "Mouse2" then
-        vim:SendMouseButtonEvent(0, 0, 1, true, game, 0)
-        task.wait(0.04)
-        vim:SendMouseButtonEvent(0, 0, 1, false, game, 0)
-    elseif typeof(keyInfo) == "EnumItem" then
-        vim:SendKeyEvent(true, keyInfo, false, game)
-        task.wait(0.04)
-        vim:SendKeyEvent(false, keyInfo, false, game)
-    end
 end
 
 -- SLIDER
@@ -1975,30 +2516,22 @@ function Hub:BuildMainTab(page)
     local pingLabel = self:CreateInfoRow(secPlayer, "Network Ping", "... ms", self.Theme.SuccessGreen)
     local fpsLabel = self:CreateInfoRow(secPlayer, "Framerate", "... FPS", self.Theme.SuccessGreen)
 
-    local fpsCounter, lastFpsTime = 0, os.clock()
-    local renderConn = Hub.Services.RunService.RenderStepped:Connect(function()
-        fpsCounter = fpsCounter + 1
-        local now = os.clock()
-        if now - lastFpsTime >= 0.5 then
-            local currentFps = math.floor(fpsCounter / (now - lastFpsTime))
-            fpsLabel.Text = currentFps .. " FPS"
-            fpsCounter = 0
-            lastFpsTime = now
+    local frameCount, timeAcc = 0, 0
+    local renderConn = Hub.Services.RunService.RenderStepped:Connect(function(dt)
+        frameCount = frameCount + 1
+        timeAcc = timeAcc + (dt or 0.016)
+        if timeAcc >= 0.5 then
+            local currentFps = math.round(frameCount / timeAcc)
+            fpsLabel.Text = tostring(currentFps) .. " FPS"
+            frameCount = 0
+            timeAcc = 0
 
-            local pingVal = 0
             pcall(function()
                 if LocalPlayer and LocalPlayer.GetNetworkPing then
-                    pingVal = math.floor(LocalPlayer:GetNetworkPing() * 1000)
+                    local p = math.floor(LocalPlayer:GetNetworkPing() * 1000)
+                    pingLabel.Text = tostring(p) .. " ms"
                 end
             end)
-            if pingVal <= 0 then
-                pcall(function()
-                    local perf = Hub.Services.Stats:FindFirstChild("PerformanceStats")
-                    local pingStat = perf and perf:FindFirstChild("Ping")
-                    if pingStat then pingVal = math.floor(pingStat:GetValue()) end
-                end)
-            end
-            pingLabel.Text = pingVal .. " ms"
         end
     end)
     table.insert(self.State.Connections, renderConn)
@@ -2125,15 +2658,6 @@ function Hub:BuildMainTab(page)
         end
     end)
 
-    -- AUTO SERVER HOP & MIN PLAYERS SLIDER
-    self:CreateToggle(secServer, "Auto Server Hop", self.Config.AutoServerHop, function(val)
-        self.Config.AutoServerHop = val
-    end)
-
-    self:CreateSlider(secServer, "Мин. игроков для хопа", 2, 20, self.Config.MinPlayersThreshold or 6, function(val)
-        self.Config.MinPlayersThreshold = val
-    end)
-
     -- REJOIN & SERVER HOP
     self:CreateButton(secServer, "Rejoin", function()
         self:TriggerRejoin("Manual Rejoin")
@@ -2159,35 +2683,28 @@ function Hub:BuildTradeHelperTab(page)
         self.Config.Key_OpenIndex = newKey
     end)
 
-    self:CreateButton(secBooth, "Телепорт к своему стенду", function()
-        self:TeleportToMyBooth()
-    end, self.Theme.SuccessGreen)
 
     self:CreateToggle(secBooth, "Auto Claim Booth", self.Config.AutoClaimBooth, function(val)
         self.Config.AutoClaimBooth = val
         if val then
             self:ClaimNearestBooth()
         end
-    end)
-
-    self:CreateToggle(secBooth, "Auto TP to My Booth", self.Config.AutoTpToMyBooth, function(val)
-        self.Config.AutoTpToMyBooth = val
-    end)
+    end, "AutoClaimBooth")
 
     self:CreateToggle(secBooth, "ESP My Booth", self.Config.EspMyBooth, function(val)
         self.Config.EspMyBooth = val
         self:UpdateMyBoothEsp(val)
-    end)
+    end, "EspMyBooth")
 
     self:CreateToggle(secBooth, "My Booth Tracer", self.Config.MyBoothTracer, function(val)
         self.Config.MyBoothTracer = val
         self:UpdateMyBoothTracer(val)
-    end)
+    end, "MyBoothTracer")
 
     self:CreateToggle(secBooth, "ESP Booths", self.Config.EspBooths, function(val)
         self.Config.EspBooths = val
         self:UpdateBoothsEsp(val)
-    end)
+    end, "EspBooths")
 
     -- CARD 2: UTILITIES
     local secUtil = self:CreateSection(left, "Utilities")
@@ -2195,174 +2712,315 @@ function Hub:BuildTradeHelperTab(page)
     self:CreateToggle(secUtil, "Anti-AFK", self.Config.AntiAFK, function(val)
         self.Config.AntiAFK = val
         if val then
+            -- Disable native Roblox idle kicker connections
+            if getconnections then
+                pcall(function()
+                    for _, conn in ipairs(getconnections(LocalPlayer.Idled)) do
+                        conn:Disable()
+                    end
+                end)
+            end
+
             self.State.AntiAfkConn = LocalPlayer.Idled:Connect(function()
                 pcall(function()
-                    if Hub.Services.VirtualUser then
-                        Hub.Services.VirtualUser:CaptureController()
-                        Hub.Services.VirtualUser:ClickButton2(Vector2.new())
+                    if mouse1click then
+                        mouse1click()
+                    elseif keypress and keyrelease then
+                        keypress(0x20)
+                        task.wait(0.04)
+                        keyrelease(0x20)
                     end
                 end)
             end)
-            -- Periodic slash / parry strike immediately once off cooldown (~1.6s) even when minimized
-            task.spawn(function()
-                local lastStrike = 0
-                while self.Config.AntiAFK do
-                    local now = os.clock()
-                    if now - lastStrike >= 1.6 then
-                        pcall(function()
-                            self:PerformBlockStrike()
-                        end)
-                        lastStrike = now
-                    end
-                    task.wait(0.2)
-                end
-            end)
-            self:Notify("Anti-AFK", "Включен (удары каждые 1.6 сек по активной кнопке)")
+            self:Notify("Anti-AFK", "Включен (безопасный режим)")
         else
             if self.State.AntiAfkConn then
                 self.State.AntiAfkConn:Disconnect()
                 self.State.AntiAfkConn = nil
             end
+            if getconnections then
+                pcall(function()
+                    for _, conn in ipairs(getconnections(LocalPlayer.Idled)) do
+                        conn:Enable()
+                    end
+                end)
+            end
             self:Notify("Anti-AFK", "Выключен")
         end
-    end)
+    end, "AntiAFK")
 
     self:CreateToggle(secUtil, "Auto-Rejoin on Kick", self.Config.AutoRejoinOnKick, function(val)
         self.Config.AutoRejoinOnKick = val
+    end, "AutoRejoinOnKick")
+
+    self:CreateToggle(secUtil, "Auto Server Hop", self.Config.AutoServerHop, function(val)
+        self.Config.AutoServerHop = val
+    end, "AutoServerHop")
+
+    self:CreateSlider(secUtil, "Мин. игроков для хопа", 2, 20, self.Config.MinPlayersThreshold or 6, function(val)
+        self.Config.MinPlayersThreshold = val
     end)
 
-    -- CARD 3: SESSION PROFIT TRACKER
-    local secProfit = self:CreateSection(right, "Session Profit Tracker")
+    -- CARD 3: ITEM WATCHLIST (Искатель предметов)
+    local secWatch = self:CreateSection(right, "Искатель предметов (Watchlist)", Icons.Search or Icons.StarFilled)
 
-    local profitRow = Instance.new("Frame")
-    profitRow.Size = UDim2.new(1, 0, 0, 32)
-    profitRow.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
-    profitRow.Parent = secProfit
-    self:Corner(profitRow, 6)
-    self:Stroke(profitRow, Color3.fromRGB(34, 34, 46), 1)
+    self:CreateToggle(secWatch, "ESP Искомых предметов", self.Config.WatchlistEsp, function(val)
+        self.Config.WatchlistEsp = val
+        self:UpdateWatchlistEsp(val)
+    end, "WatchlistEsp")
 
-    local profitTitle = Instance.new("TextLabel")
-    profitTitle.Size = UDim2.new(0.5, -10, 1, 0)
-    profitTitle.Position = UDim2.new(0, 10, 0, 0)
-    profitTitle.BackgroundTransparency = 1
-    profitTitle.Font = Enum.Font.GothamMedium
-    profitTitle.Text = "Заработано токенов:"
-    profitTitle.TextColor3 = self.Theme.TextDim
-    profitTitle.TextSize = 11
-    profitTitle.TextXAlignment = Enum.TextXAlignment.Left
-    profitTitle.Parent = profitRow
+    -- Input Row: TextBox + [+] Add Button
+    local addRow = Instance.new("Frame")
+    addRow.Name = "AddWatchlistRow"
+    addRow.Size = UDim2.new(1, 0, 0, 30)
+    addRow.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+    addRow.Parent = secWatch
+    self:Corner(addRow, 6)
+    self:Stroke(addRow, Color3.fromRGB(34, 34, 44), 1)
 
-    local profitValLbl = Instance.new("TextLabel")
-    profitValLbl.Size = UDim2.new(0.5, -10, 1, 0)
-    profitValLbl.Position = UDim2.new(0.5, 0, 0, 0)
-    profitValLbl.BackgroundTransparency = 1
-    profitValLbl.Font = Enum.Font.GothamBold
-    profitValLbl.Text = "0 Tokens"
-    profitValLbl.TextColor3 = self.Theme.SuccessGreen
-    profitValLbl.TextSize = 12
-    profitValLbl.TextXAlignment = Enum.TextXAlignment.Right
-    profitValLbl.Parent = profitRow
+    local watchInput = Instance.new("TextBox")
+    watchInput.Name = "WatchItemInput"
+    watchInput.Size = UDim2.new(1, -75, 1, 0)
+    watchInput.Position = UDim2.new(0, 8, 0, 0)
+    watchInput.BackgroundTransparency = 1
+    watchInput.Font = Enum.Font.GothamMedium
+    watchInput.PlaceholderText = "Введи предмет (напр. Hellchain)..."
+    watchInput.PlaceholderColor3 = self.Theme.TextMuted
+    watchInput.Text = ""
+    watchInput.TextColor3 = self.Theme.TextPrimary
+    watchInput.TextSize = 10
+    watchInput.TextXAlignment = Enum.TextXAlignment.Left
+    watchInput.ClearTextOnFocus = false
+    watchInput.Parent = addRow
 
-    -- Sold items history list
-    local histScroll = Instance.new("ScrollingFrame")
-    histScroll.Size = UDim2.new(1, 0, 0, 110)
-    histScroll.BackgroundColor3 = Color3.fromRGB(16, 16, 22)
-    histScroll.BorderSizePixel = 0
-    histScroll.ScrollBarThickness = 3
-    histScroll.ScrollBarImageColor3 = self.Theme.Accent
-    histScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    histScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    histScroll.Parent = secProfit
-    self:Corner(histScroll, 6)
-    self:Stroke(histScroll, Color3.fromRGB(30, 30, 42), 1)
+    local addBtn = Instance.new("TextButton")
+    addBtn.Name = "AddBtn"
+    addBtn.Size = UDim2.new(0, 62, 0, 22)
+    addBtn.Position = UDim2.new(1, -66, 0.5, -11)
+    addBtn.BackgroundColor3 = self.Theme.Accent
+    addBtn.Font = Enum.Font.GothamBold
+    addBtn.Text = "+ Добавить"
+    addBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    addBtn.TextSize = 9
+    addBtn.AutoButtonColor = true
+    addBtn.Parent = addRow
+    self:Corner(addBtn, 4)
 
-    local histPad = Instance.new("UIPadding")
-    histPad.PaddingTop = UDim.new(0, 4)
-    histPad.PaddingBottom = UDim.new(0, 4)
-    histPad.PaddingLeft = UDim.new(0, 4)
-    histPad.PaddingRight = UDim.new(0, 6)
-    histPad.Parent = histScroll
+    -- Dynamic scrolling container for added items
+    local listContainer = Instance.new("ScrollingFrame")
+    listContainer.Name = "WatchlistContainer"
+    listContainer.Size = UDim2.new(1, 0, 0, 105)
+    listContainer.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+    listContainer.BorderSizePixel = 0
+    listContainer.ScrollBarThickness = 3
+    listContainer.ScrollBarImageColor3 = self.Theme.Border
+    listContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
+    listContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    listContainer.Parent = secWatch
+    self:Corner(listContainer, 6)
+    self:Stroke(listContainer, Color3.fromRGB(28, 28, 36), 1)
 
-    local histLayout = Instance.new("UIListLayout")
-    histLayout.Padding = UDim.new(0, 4)
-    histLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    histLayout.Parent = histScroll
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.FillDirection = Enum.FillDirection.Vertical
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0, 3)
+    listLayout.Parent = listContainer
 
-    local function refreshHistoryUI()
-        profitValLbl.Text = tostring(Hub.State.SessionProfit) .. " Tokens"
+    local listPadding = Instance.new("UIPadding")
+    listPadding.PaddingTop = UDim.new(0, 4)
+    listPadding.PaddingBottom = UDim.new(0, 4)
+    listPadding.PaddingLeft = UDim.new(0, 4)
+    listPadding.PaddingRight = UDim.new(0, 4)
+    listPadding.Parent = listContainer
 
-        for _, ch in ipairs(histScroll:GetChildren()) do
-            if ch:IsA("Frame") or ch:IsA("TextLabel") then
+    -- Bottom row: count label + Clear All button
+    local btmRow = Instance.new("Frame")
+    btmRow.Name = "BottomWatchlistRow"
+    btmRow.Size = UDim2.new(1, 0, 0, 22)
+    btmRow.BackgroundTransparency = 1
+    btmRow.Parent = secWatch
+
+    local countLabel = Instance.new("TextLabel")
+    countLabel.Name = "CountLabel"
+    countLabel.Size = UDim2.new(1, -85, 1, 0)
+    countLabel.BackgroundTransparency = 1
+    countLabel.Font = Enum.Font.GothamMedium
+    countLabel.Text = "В списке: 0 предм."
+    countLabel.TextColor3 = self.Theme.TextDim
+    countLabel.TextSize = 9.5
+    countLabel.TextXAlignment = Enum.TextXAlignment.Left
+    countLabel.Parent = btmRow
+
+    local clearBtn = Instance.new("TextButton")
+    clearBtn.Name = "ClearAllBtn"
+    clearBtn.Size = UDim2.new(0, 78, 0, 20)
+    clearBtn.Position = UDim2.new(1, -78, 0.5, -10)
+    clearBtn.BackgroundColor3 = Color3.fromRGB(38, 20, 24)
+    clearBtn.Font = Enum.Font.GothamBold
+    clearBtn.Text = "Очистить всё"
+    clearBtn.TextColor3 = self.Theme.DangerRed
+    clearBtn.TextSize = 9
+    clearBtn.AutoButtonColor = true
+    clearBtn.Parent = btmRow
+    self:Corner(clearBtn, 4)
+    self:Stroke(clearBtn, Color3.fromRGB(65, 30, 36), 1)
+
+    local function refreshWatchlistUI()
+        for _, ch in ipairs(listContainer:GetChildren()) do
+            if not ch:IsA("UIListLayout") and not ch:IsA("UIPadding") then
                 ch:Destroy()
             end
         end
 
-        if #Hub.State.SoldHistory == 0 then
-            local empty = Instance.new("TextLabel")
-            empty.Size = UDim2.new(1, 0, 0, 30)
-            empty.BackgroundTransparency = 1
-            empty.Font = Enum.Font.GothamMedium
-            empty.Text = "Продаж за сессию пока нет"
-            empty.TextColor3 = Hub.Theme.TextMuted
-            empty.TextSize = 10
-            empty.Parent = histScroll
+        local items = self.Config.WatchlistItems or {}
+        countLabel.Text = string.format("В списке: %d предм.", #items)
+
+        if #items == 0 then
+            local emptyLabel = Instance.new("TextLabel")
+            emptyLabel.Size = UDim2.new(1, 0, 0, 40)
+            emptyLabel.BackgroundTransparency = 1
+            emptyLabel.Font = Enum.Font.GothamMedium
+            emptyLabel.Text = "Список пуст. Введи название выше и нажми [+]."
+            emptyLabel.TextColor3 = self.Theme.TextMuted
+            emptyLabel.TextSize = 9.5
+            emptyLabel.Parent = listContainer
             return
         end
 
-        for _, item in ipairs(Hub.State.SoldHistory) do
-            local card = Instance.new("Frame")
-            card.Size = UDim2.new(1, 0, 0, 36)
-            card.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-            card.Parent = histScroll
-            Hub:Corner(card, 5)
-            Hub:Stroke(card, Color3.fromRGB(36, 36, 48), 1)
+        for idx, itemName in ipairs(items) do
+            local itemRow = Instance.new("Frame")
+            itemRow.Name = "ItemRow_" .. tostring(idx)
+            itemRow.Size = UDim2.new(1, 0, 0, 22)
+            itemRow.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+            itemRow.Parent = listContainer
+            self:Corner(itemRow, 4)
 
-            local iconImg = Instance.new("ImageLabel")
-            iconImg.Size = UDim2.new(0, 26, 0, 26)
-            iconImg.Position = UDim2.new(0, 5, 0.5, -13)
-            iconImg.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-            iconImg.Image = item.Icon or "rbxassetid://7734053495"
-            iconImg.ScaleType = Enum.ScaleType.Fit
-            iconImg.Parent = card
-            Hub:Corner(iconImg, 4)
+            local dot = Instance.new("Frame")
+            dot.Size = UDim2.new(0, 4, 0, 4)
+            dot.Position = UDim2.new(0, 6, 0.5, -2)
+            dot.BackgroundColor3 = Color3.fromRGB(255, 205, 50)
+            dot.BorderSizePixel = 0
+            dot.Parent = itemRow
+            self:Corner(dot, 2)
 
-            local nameLbl = Instance.new("TextLabel")
-            nameLbl.Size = UDim2.new(1, -125, 0, 16)
-            nameLbl.Position = UDim2.new(0, 36, 0, 3)
-            nameLbl.BackgroundTransparency = 1
-            nameLbl.Font = Enum.Font.GothamBold
-            nameLbl.Text = item.Name
-            nameLbl.TextColor3 = Hub.Theme.TextPrimary
-            nameLbl.TextSize = 11
-            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-            nameLbl.Parent = card
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(1, -38, 1, 0)
+            nameLabel.Position = UDim2.new(0, 16, 0, 0)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Font = Enum.Font.GothamMedium
+            nameLabel.Text = itemName
+            nameLabel.TextColor3 = Color3.fromRGB(240, 240, 250)
+            nameLabel.TextSize = 10
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            nameLabel.Parent = itemRow
 
-            local timeLbl = Instance.new("TextLabel")
-            timeLbl.Size = UDim2.new(1, -125, 0, 14)
-            timeLbl.Position = UDim2.new(0, 36, 0, 19)
-            timeLbl.BackgroundTransparency = 1
-            timeLbl.Font = Enum.Font.Gotham
-            timeLbl.Text = "Время: " .. item.Time
-            timeLbl.TextColor3 = Hub.Theme.TextMuted
-            timeLbl.TextSize = 9
-            timeLbl.TextXAlignment = Enum.TextXAlignment.Left
-            timeLbl.Parent = card
+            local delBtn = Instance.new("TextButton")
+            delBtn.Name = "DelBtn"
+            delBtn.Size = UDim2.new(0, 18, 0, 18)
+            delBtn.Position = UDim2.new(1, -20, 0.5, -9)
+            delBtn.BackgroundColor3 = Color3.fromRGB(36, 18, 22)
+            delBtn.Font = Enum.Font.GothamBold
+            delBtn.Text = "✕"
+            delBtn.TextColor3 = Color3.fromRGB(255, 90, 100)
+            delBtn.TextSize = 10
+            delBtn.AutoButtonColor = true
+            delBtn.Parent = itemRow
+            self:Corner(delBtn, 3)
 
-            local priceLbl = Instance.new("TextLabel")
-            priceLbl.Size = UDim2.new(0, 80, 1, 0)
-            priceLbl.Position = UDim2.new(1, -85, 0, 0)
-            priceLbl.BackgroundTransparency = 1
-            priceLbl.Font = Enum.Font.GothamBold
-            priceLbl.Text = "+" .. tostring(item.Price) .. " T"
-            priceLbl.TextColor3 = Hub.Theme.SuccessGreen
-            priceLbl.TextSize = 11
-            priceLbl.TextXAlignment = Enum.TextXAlignment.Right
-            priceLbl.Parent = card
+            delBtn.MouseButton1Click:Connect(function()
+                table.remove(self.Config.WatchlistItems, idx)
+                refreshWatchlistUI()
+                self:UpdateWatchlistEsp(self.Config.WatchlistEsp)
+            end)
         end
     end
 
-    Hub.State.RefreshProfitUI = refreshHistoryUI
-    refreshHistoryUI()
+    self.State.RefreshWatchlistUI = refreshWatchlistUI
+
+    local function handleAddItem()
+        local raw = watchInput.Text or ""
+        watchInput.Text = ""
+        local addedCount = 0
+        for item in string.gmatch(raw, "[^,]+") do
+            local clean = item:match("^%s*(.-)%s*$")
+            if clean and clean ~= "" then
+                local exists = false
+                for _, existing in ipairs(self.Config.WatchlistItems) do
+                    if existing:lower() == clean:lower() then
+                        exists = true
+                        break
+                    end
+                end
+                if not exists then
+                    table.insert(self.Config.WatchlistItems, clean)
+                    addedCount = addedCount + 1
+                end
+            end
+        end
+
+        if addedCount > 0 then
+            refreshWatchlistUI()
+            self:UpdateWatchlistEsp(self.Config.WatchlistEsp)
+            self:Notify("Watchlist", string.format("Добавлено предметов: %d", addedCount))
+        end
+    end
+
+    addBtn.MouseButton1Click:Connect(handleAddItem)
+    watchInput.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            handleAddItem()
+        end
+    end)
+
+    clearBtn.MouseButton1Click:Connect(function()
+        if #self.Config.WatchlistItems > 0 then
+            self.Config.WatchlistItems = {}
+            refreshWatchlistUI()
+            self:UpdateWatchlistEsp(self.Config.WatchlistEsp)
+            self:Notify("Watchlist", "Список искомых предметов очищен")
+        end
+    end)
+
+    refreshWatchlistUI()
+
+    -- CARD 3.5: AUTO TELEPORT TO SELLER
+    local secTp = self:CreateSection(right, "Авто-ТП к продавцу", Icons.Server)
+
+    local tpRow = Instance.new("Frame")
+    tpRow.Name = "TpRow"
+    tpRow.Size = UDim2.new(1, 0, 0, 30)
+    tpRow.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+    tpRow.Parent = secTp
+    self:Corner(tpRow, 6)
+    self:Stroke(tpRow, Color3.fromRGB(34, 34, 44), 1)
+
+    local tpBox = Instance.new("TextBox")
+    tpBox.Name = "TeleportItemInput"
+    tpBox.Size = UDim2.new(1, -16, 1, 0)
+    tpBox.Position = UDim2.new(0, 8, 0, 0)
+    tpBox.BackgroundTransparency = 1
+    tpBox.Font = Enum.Font.GothamMedium
+    tpBox.PlaceholderText = "Предмет для ТП (напр. Python)..."
+    tpBox.PlaceholderColor3 = self.Theme.TextMuted
+    tpBox.Text = self.Config.TeleportItemName or ""
+    tpBox.TextColor3 = self.Theme.TextPrimary
+    tpBox.TextSize = 10
+    tpBox.TextXAlignment = Enum.TextXAlignment.Left
+    tpBox.ClearTextOnFocus = false
+    tpBox.Parent = tpRow
+
+    tpBox:GetPropertyChangedSignal("Text"):Connect(function()
+        self.Config.TeleportItemName = tpBox.Text:match("^%s*(.-)%s*$") or ""
+    end)
+
+    self.State.UpdateTeleportInput = function(val)
+        if tpBox then tpBox.Text = val or "" end
+    end
+
+    self:CreateButton(secTp, "🚀 Найти продавца и телепортироваться", function()
+        self:TeleportToSeller(tpBox.Text)
+    end, self.Theme.SuccessGreen, Color3.fromRGB(18, 36, 26))
 
     -- CARD 4: DISCORD WEBHOOK
     local secWebhook = self:CreateSection(right, "Discord Webhook")
@@ -2370,7 +3028,7 @@ function Hub:BuildTradeHelperTab(page)
     self:CreateToggle(secWebhook, "Отправлять чеки в Webhook", self.Config.WebhookEnabled, function(val)
         self.Config.WebhookEnabled = val
         self:Notify("Webhook", val and "Webhook включен!" or "Webhook выключен")
-    end)
+    end, "WebhookEnabled")
 
     local whBoxFrame = Instance.new("Frame")
     whBoxFrame.Size = UDim2.new(1, 0, 0, 26)
@@ -2729,6 +3387,15 @@ function Hub:BuildSettingsTab(page)
     -- CARD 2: SCRIPT CONTROL
     local actSec = self:CreateSection(right, "Script Control")
 
+    self:CreateToggle(actSec, "Закрывать GUI при старте", self.Config.CloseGuiOnStart, function(val)
+        self.Config.CloseGuiOnStart = val
+    end, "CloseGuiOnStart")
+
+    self:CreateToggle(actSec, "Fast Load (пропуск заставок)", self.Config.FastLoad, function(val)
+        self.Config.FastLoad = val
+        if val then self:ApplyFastLoad() end
+    end, "FastLoad")
+
     self:CreateButton(actSec, "Unload Script", function()
         self:Unload()
     end, self.Theme.DangerRed, self.Theme.DangerDark)
@@ -2814,7 +3481,14 @@ function Hub:SetupKeybind()
             if input.KeyCode == self.Config.MenuKey then
                 self:ToggleMenu()
             elseif self.Config.Key_OpenIndex and input.KeyCode == self.Config.Key_OpenIndex then
-                self:OpenSelectedItemInIndex()
+                local hovered = self:GetHoveredBoothItem()
+                if hovered and hovered ~= "" then
+                    self:OpenSelectedItemInIndex(hovered)
+                elseif self.State.InStatsMode then
+                    self:CloseIndexStats()
+                else
+                    self:OpenSelectedItemInIndex()
+                end
             end
         end
     end)
@@ -2823,4 +3497,45 @@ end
 
 -- INITIALIZE
 Hub:BuildUI()
-print("[Dynamic Hub] Blade Ball Trade Plaza Edition loaded with Booth Modules & Profit Tracker! Toggle: [Right Control].")
+
+-- Autoload saved configuration if set
+pcall(function()
+    local autoName, isAuto = Hub:GetAutoload()
+    if isAuto and autoName and autoName ~= "" then
+        Hub:LoadConfig(autoName)
+    end
+end)
+
+-- Apply Fast Load optimizations (skip cutscenes, popups & blackouts)
+Hub:ApplyFastLoad()
+
+-- Ensure native Index starts completely clean (ItemPreview hidden, ItemsList visible)
+pcall(function()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    local indexGui = pg and pg:FindFirstChild("Index")
+    local ml = indexGui and indexGui:FindFirstChild("Main") and indexGui.Main:FindFirstChild("Left") and indexGui.Main.Left:FindFirstChild("MainLabel")
+    if ml then
+        if ml:FindFirstChild("ItemPreview") then ml.ItemPreview.Visible = false end
+        if ml:FindFirstChild("ItemsList") then ml.ItemsList.Visible = true end
+        if ml:FindFirstChild("RapChart") then ml.RapChart.Visible = false end
+    end
+end)
+
+-- Ensure character joints and sword are reset
+pcall(function()
+    local char = LocalPlayer.Character
+    if char then
+        local torso = char:FindFirstChild("Torso")
+        if torso and torso:FindFirstChild("Motor6D") then
+            torso.Motor6D.Enabled = true
+        end
+        for _, d in ipairs(char:GetDescendants()) do
+            if d.Name == "Adjustment6D" then d:Destroy() end
+            if d:IsA("Trail") then d.Enabled = false end
+        end
+    end
+end)
+
+print("[Dynamic Hub] Blade Ball Trade Plaza Edition loaded with Booth Modules & Item RAP Inspector! Toggle: [Right Control].")
+
+_G.DynamicTradeHub = Hub
